@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Z1F Engineering Progress Tracking & Analytics Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-shell">
+        <!-- Header -->
+        <header class="app-header glass-header">
+            <div class="header-left">
+                <div class="logo-box">
+                    <span class="logo-icon">⚡</span>
+                </div>
+                <div class="title-group">
+                    <h1>Z1F Engineering Progress Measurement</h1>
+                    <p class="subtitle">Multi-Work Package Tracking & Delay Analytics Dashboard | Aung Sinkha Phase 1A</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="server-status-pill" id="statusPill">
+                    <span class="status-dot green"></span>
+                    <span id="statusText">Connecting...</span>
+                </div>
+                <div class="clock-badge" id="clockBadge">--:--:--</div>
+                <button class="btn btn-primary upload-trigger-btn" id="openUploadModalBtn">
+                    <span>📁 Weekly Cut-off Upload</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Navigation Tabs (4 WPs + Executive) -->
+        <nav class="wp-tabs-nav glass-card">
+            <button class="wp-tab active" data-wp="executive">
+                <span class="wp-icon">🏢</span>
+                <span class="wp-label">Executive Overview</span>
+                <span class="wp-badge" id="badge-executive">--</span>
+            </button>
+            <button class="wp-tab" data-wp="wp1_topside_excl">
+                <span class="wp-icon">🛠️</span>
+                <span class="wp-label">WP-1 Topside Excl. Structure</span>
+                <span class="wp-badge" id="badge-wp1_topside_excl">--</span>
+            </button>
+            <button class="wp-tab" data-wp="wp1_topside_structure">
+                <span class="wp-icon">🏗️</span>
+                <span class="wp-label">WP-1 Topside Structure</span>
+                <span class="wp-badge" id="badge-wp1_topside_structure">--</span>
+            </button>
+            <button class="wp-tab" data-wp="wp1_jacket">
+                <span class="wp-icon">⚓</span>
+                <span class="wp-label">WP-1 Jacket</span>
+                <span class="wp-badge" id="badge-wp1_jacket">--</span>
+            </button>
+            <button class="wp-tab" data-wp="wp2_pipeline">
+                <span class="wp-icon">🛢️</span>
+                <span class="wp-label">WP-2 Pipeline</span>
+                <span class="wp-badge" id="badge-wp2_pipeline">--</span>
+            </button>
+        </nav>
+
+        <!-- Section Info Banner -->
+        <div class="section-banner glass-card">
+            <div class="banner-info">
+                <h2 id="sectionTitle">Executive Overview across All Work Packages</h2>
+                <p id="sectionSubtext">Tracking Cut-off Baseline: <strong id="cutoffDateSpan">Loading...</strong> | Anchor Date: <strong id="anchorDateSpan">TODAY</strong></p>
+            </div>
+            <div class="banner-file-info" id="fileSourceBox">
+                <span class="file-label">Source File:</span>
+                <code id="activeFilename">Multi-package aggregation</code>
+            </div>
+        </div>
+
+        <!-- KPI Cards Grid -->
+        <section class="kpi-grid">
+            <div class="kpi-card glass-card">
+                <div class="kpi-header">
+                    <span class="kpi-title">Total Deliverables</span>
+                    <span class="kpi-icon">📋</span>
+                </div>
+                <div class="kpi-dual-box">
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">Max Gates (3 Revs)</span>
+                        <div class="kpi-value" id="kpiTotalGates">--</div>
+                    </div>
+                    <div class="kpi-metric-sep"></div>
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">MDR Rows (Docs)</span>
+                        <div class="kpi-value-secondary" id="kpiTotalDocs">--</div>
+                    </div>
+                </div>
+                <div class="kpi-footer" title="Unique MDR rows vs total 3-revision gates (IFR/IFA/AFC)">Unique MDR rows vs 3-Rev Gate scope</div>
+            </div>
+            <div class="kpi-card glass-card kpi-ontime">
+                <div class="kpi-header">
+                    <span class="kpi-title">On-Time Deliverables</span>
+                    <span class="kpi-icon">⚡</span>
+                </div>
+                <div class="kpi-dual-box">
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">Gates (3 Revs)</span>
+                        <div class="kpi-value alert-green" id="kpiTotalOnTimeGates">--</div>
+                    </div>
+                    <div class="kpi-metric-sep"></div>
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">MDR Docs Basis</span>
+                        <div class="kpi-value-secondary alert-green" id="kpiTotalOnTime">--</div>
+                    </div>
+                </div>
+                <div class="kpi-footer" id="kpiOnTimeFooter" title="Gates on-schedule vs Unique MDR docs with 0 delay breaches">Zero delay breach status</div>
+            </div>
+            <div class="kpi-card glass-card kpi-delayed">
+                <div class="kpi-header">
+                    <span class="kpi-title">Total Delayed Gates</span>
+                    <span class="kpi-icon">🚨</span>
+                </div>
+                <div class="kpi-dual-box">
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">Gates (3 Revs)</span>
+                        <div class="kpi-value alert-red" id="kpiTotalDelayed">--</div>
+                    </div>
+                    <div class="kpi-metric-sep"></div>
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">MDR Docs Basis</span>
+                        <div class="kpi-value-secondary alert-red" id="kpiTotalDelayedDocs">--</div>
+                    </div>
+                </div>
+                <div class="kpi-footer" id="kpiDelayedFooter" title="Total delayed gates vs count of unique MDR documents having delay breaches">Combined Type 3.1 & 3.2 breaches</div>
+            </div>
+            <div class="kpi-card glass-card kpi-type1">
+                <div class="kpi-header">
+                    <span class="kpi-title">Type 3.1: Submitted Late</span>
+                    <span class="kpi-icon">🟤</span>
+                </div>
+                <div class="kpi-dual-box">
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">Gates (3 Revs)</span>
+                        <div class="kpi-value alert-brown" id="kpiType1">--</div>
+                    </div>
+                    <div class="kpi-metric-sep"></div>
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">MDR Docs Basis</span>
+                        <div class="kpi-value-secondary alert-brown" id="kpiType1Docs">--</div>
+                    </div>
+                </div>
+                <div class="kpi-footer" title="Gates vs Unique MDR documents submitted after Forecast Date">Actual Date > Forecast Date</div>
+            </div>
+            <div class="kpi-card glass-card kpi-type2">
+                <div class="kpi-header">
+                    <span class="kpi-title">Type 3.2: Overdue</span>
+                    <span class="kpi-icon">🔴</span>
+                </div>
+                <div class="kpi-dual-box">
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">Gates (3 Revs)</span>
+                        <div class="kpi-value alert-rose" id="kpiType2">--</div>
+                    </div>
+                    <div class="kpi-metric-sep"></div>
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">MDR Docs Basis</span>
+                        <div class="kpi-value-secondary alert-rose" id="kpiType2Docs">--</div>
+                    </div>
+                </div>
+                <div class="kpi-footer" title="Overdue unsubmitted gates vs Unique MDR documents affected">Not Submitted & TODAY ≥ Forecast</div>
+            </div>
+            <div class="kpi-card glass-card kpi-lookahead">
+                <div class="kpi-header">
+                    <span class="kpi-title">14-Day Lookahead Risk</span>
+                    <span class="kpi-icon">🟡</span>
+                </div>
+                <div class="kpi-dual-box">
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">Gates (3 Revs)</span>
+                        <div class="kpi-value alert-yellow" id="kpiLookahead">--</div>
+                    </div>
+                    <div class="kpi-metric-sep"></div>
+                    <div class="kpi-metric-col">
+                        <span class="kpi-sublabel">MDR Docs Basis</span>
+                        <div class="kpi-value-secondary alert-yellow" id="kpiLookaheadDocs">--</div>
+                    </div>
+                </div>
+                <div class="kpi-footer" id="kpiSlippingFooter" title="Lookahead due gates slipping vs unique MDR documents involved">0 slipping from Plan</div>
+            </div>
+        </section>
+
+        <!-- Charts Grid -->
+        <section class="charts-grid">
+            <div class="chart-box glass-card">
+                <div class="chart-header">
+                    <h3>Discipline Progress & Gate Status Stacked Bar</h3>
+                    <span class="chart-tag">Real-time status mix</span>
+                </div>
+                <div class="chart-canvas-wrapper">
+                    <canvas id="progressChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-box glass-card">
+                <div class="chart-header">
+                    <h3>Delay Severity, Overdue & 14-Day Lookahead Risk</h3>
+                    <span class="chart-tag">Breach & Lookahead categorization</span>
+                </div>
+                <div class="chart-canvas-wrapper">
+                    <canvas id="delayChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Data Filter Bar -->
+        <section class="filter-bar glass-card">
+            <div class="filter-group">
+                <label for="searchInput">🔍 Search Deliverables:</label>
+                <input type="text" id="searchInput" placeholder="Filter by Doc No, Title, Discipline...">
+            </div>
+            <div class="filter-group">
+                <label for="disciplineSelect">Discipline / Area:</label>
+                <select id="disciplineSelect">
+                    <option value="ALL">All Disciplines</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="milestoneSelect">Gate Milestone:</label>
+                <select id="milestoneSelect">
+                    <option value="ALL">All Milestones</option>
+                    <option value="IFR">IFR (Interdisciplinary Review)</option>
+                    <option value="IFA">IFA (Issued for Approval)</option>
+                    <option value="AFC">AFC (Approved for Construction)</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="statusSelect">Breach Status:</label>
+                <select id="statusSelect">
+                    <option value="ALL">All Statuses</option>
+                    <option value="ON_TIME">⚡ On-Time / On-Schedule</option>
+                    <option value="DELAYED">🚨 All Delayed (Type 3.1 & 3.2)</option>
+                    <option value="TYPE3_1">🟤 Type 3.1 (Submitted Late)</option>
+                    <option value="TYPE3_2">🔴 Type 3.2 (Overdue & Not Submitted)</option>
+                    <option value="CRITICAL">🔥 Critical Aging (> 30 Days Late)</option>
+                    <option value="LOOKAHEAD">🟡 14-Day Lookahead Warnings</option>
+                </select>
+            </div>
+            <div class="filter-actions">
+                <button class="btn btn-secondary" id="resetFiltersBtn">Reset Filters</button>
+            </div>
+        </section>
+
+        <!-- Table Sub-Tabs and Data View -->
+        <section class="table-section glass-card">
+            <div class="table-sub-tabs">
+                <button class="sub-tab active" data-sub="mdr">
+                    <span>📋 Master Document Register (MDR)</span>
+                    <span class="sub-badge" id="subCountMdr">0</span>
+                </button>
+                <button class="sub-tab" data-sub="delay">
+                    <span>🚨 Overdue & Delayed Table (Type 3.1 & 3.2)</span>
+                    <span class="sub-badge alert-bg-brown" id="subCountDelay3_1" title="Type 3.1 Submitted Late (Unique MDR Documents)">3.1: 0</span>
+                    <span class="sub-badge alert-bg-red" id="subCountDelay3_2" title="Type 3.2 Overdue (Unique MDR Documents)">3.2: 0</span>
+                </button>
+                <button class="sub-tab" data-sub="lookahead">
+                    <span>⚠️ 14-Day Lookahead & Slippage Table</span>
+                    <span class="sub-badge alert-bg-yellow" id="subCountLookahead" title="14-Day Lookahead Warnings (Unique MDR Documents)">0</span>
+                </button>
+            </div>
+            <div class="table-responsive-wrapper" id="dataTableWrapper">
+                <!-- Table will be rendered dynamically by app.js -->
+                <div class="loading-spinner">Loading engineering deliverables...</div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Weekly Cut-off Upload Modal -->
+    <div class="modal-overlay" id="uploadModal">
+        <div class="modal-box glass-card">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <h2>📁 Weekly Cut-off Upload Center</h2>
+                    <p>Manually update weekly progress Excel files. Auto-detects Work Package assignment.</p>
+                </div>
+                <button class="close-modal-btn" id="closeUploadModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Drag and drop zone -->
+                <div class="dropzone" id="dropzone">
+                    <div class="drop-icon">☁️</div>
+                    <h3>Drag & Drop weekly Excel cut-off files here</h3>
+                    <p>Supports <code>.xlsx</code> and <code>.xlsm</code> format from contractors</p>
+                    <span class="drop-divider">OR</span>
+                    <label class="btn btn-primary file-browse-btn">
+                        <span>Browse Computer for Files</span>
+                        <input type="file" id="fileInput" accept=".xlsx,.xlsm" multiple hidden>
+                    </label>
+                </div>
+
+                <!-- Manual assignment override grid -->
+                <div class="wp-upload-grid">
+                    <div class="wp-upload-card" data-target="wp1_topside_excl">
+                        <div class="wp-card-head">
+                            <span class="wp-card-title">WP-1 Topside Excl. Structure</span>
+                            <span class="wp-card-status" id="status-wp1_topside_excl">Mapped</span>
+                        </div>
+                        <div class="wp-card-file" id="file-wp1_topside_excl">Loading...</div>
+                        <label class="btn btn-sm btn-outline">
+                            <span>Upload Specific File</span>
+                            <input type="file" class="single-wp-upload" data-wp="wp1_topside_excl" accept=".xlsx,.xlsm" hidden>
+                        </label>
+                    </div>
+
+                    <div class="wp-upload-card" data-target="wp1_topside_structure">
+                        <div class="wp-card-head">
+                            <span class="wp-card-title">WP-1 Topside Structure</span>
+                            <span class="wp-card-status" id="status-wp1_topside_structure">Mapped</span>
+                        </div>
+                        <div class="wp-card-file" id="file-wp1_topside_structure">Loading...</div>
+                        <label class="btn btn-sm btn-outline">
+                            <span>Upload Specific File</span>
+                            <input type="file" class="single-wp-upload" data-wp="wp1_topside_structure" accept=".xlsx,.xlsm" hidden>
+                        </label>
+                    </div>
+
+                    <div class="wp-upload-card" data-target="wp1_jacket">
+                        <div class="wp-card-head">
+                            <span class="wp-card-title">WP-1 Jacket</span>
+                            <span class="wp-card-status" id="status-wp1_jacket">Mapped</span>
+                        </div>
+                        <div class="wp-card-file" id="file-wp1_jacket">Loading...</div>
+                        <label class="btn btn-sm btn-outline">
+                            <span>Upload Specific File</span>
+                            <input type="file" class="single-wp-upload" data-wp="wp1_jacket" accept=".xlsx,.xlsm" hidden>
+                        </label>
+                    </div>
+
+                    <div class="wp-upload-card" data-target="wp2_pipeline">
+                        <div class="wp-card-head">
+                            <span class="wp-card-title">WP-2 Pipeline</span>
+                            <span class="wp-card-status" id="status-wp2_pipeline">Mapped</span>
+                        </div>
+                        <div class="wp-card-file" id="file-wp2_pipeline">Loading...</div>
+                        <label class="btn btn-sm btn-outline">
+                            <span>Upload Specific File</span>
+                            <input type="file" class="single-wp-upload" data-wp="wp2_pipeline" accept=".xlsx,.xlsm" hidden>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Upload progress bar -->
+                <div class="upload-progress-box" id="uploadProgressBox" style="display: none;">
+                    <div class="progress-info">
+                        <span id="progressText">Uploading weekly cut-off...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar-shell">
+                        <div class="progress-bar-fill" id="progressBarFill"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="closeUploadModalBtnBottom">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

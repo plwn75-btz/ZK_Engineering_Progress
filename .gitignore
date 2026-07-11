@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+venv/
+env/
+.env
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Note: Master Excel files (*.xlsx, *.xlsm) are explicitly KEPT for cloud deployment on Render.

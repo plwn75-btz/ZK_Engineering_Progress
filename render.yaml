@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: z1f-engineering-progress-dashboard
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    plan: free
+    envVars:
+      - key: PORT
+        value: 8090
+      - key: PYTHONUNBUFFERED
+        value: true

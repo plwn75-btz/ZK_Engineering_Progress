@@ -4,7 +4,11 @@ import json
 import os
 import datetime
 import threading
-import cgi
+try:
+    import cgi
+except ImportError:
+    cgi = None
+import email.parser
 import shutil
 
 try:
@@ -517,44 +521,95 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
             
     def do_POST(self):
         if self.path.startswith("/api/upload"):
-            form = cgi.FieldStorage(
-                fp=self.rfile,
-                headers=self.headers,
-                environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": self.headers["Content-Type"]}
-            )
+            wp_key = ""
+            filename = ""
+            save_path = ""
             
-            wp_key = form.getvalue("wp_key", "").strip()
-            if not wp_key or wp_key not in ("wp1_topside_excl", "wp1_topside_structure", "wp1_jacket", "wp2_pipeline"):
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Invalid or missing wp_key parameter"}).encode("utf-8"))
-                return
+            if cgi is not None:
+                form = cgi.FieldStorage(
+                    fp=self.rfile,
+                    headers=self.headers,
+                    environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": self.headers["Content-Type"]}
+                )
                 
-            if "file" not in form:
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "No file uploaded in 'file' field"}).encode("utf-8"))
-                return
+                wp_key = form.getvalue("wp_key", "").strip()
+                if not wp_key or wp_key not in ("wp1_topside_excl", "wp1_topside_structure", "wp1_jacket", "wp2_pipeline"):
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Invalid or missing wp_key parameter"}).encode("utf-8"))
+                    return
+                    
+                if "file" not in form:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "No file uploaded in 'file' field"}).encode("utf-8"))
+                    return
+                    
+                file_item = form["file"]
+                if not file_item.filename:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Empty filename"}).encode("utf-8"))
+                    return
+                    
+                filename = os.path.basename(file_item.filename)
+                save_path = os.path.join(WORKSPACE_DIR, filename)
                 
-            file_item = form["file"]
-            if not file_item.filename:
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Empty filename"}).encode("utf-8"))
-                return
+                with open(save_path, "wb") as f:
+                    while True:
+                        chunk = file_item.file.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+            else:
+                content_length = int(self.headers.get("Content-Length", 0))
+                if content_length <= 0:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Empty request body"}).encode("utf-8"))
+                    return
+                body = self.rfile.read(content_length)
+                content_type = self.headers.get("Content-Type", "")
+                header_bytes = f"Content-Type: {content_type}\r\n\r\n".encode("latin1") + body
+                msg = email.parser.BytesParser().parsebytes(header_bytes)
                 
-            filename = os.path.basename(file_item.filename)
-            save_path = os.path.join(WORKSPACE_DIR, filename)
-            
-            with open(save_path, "wb") as f:
-                while True:
-                    chunk = file_item.file.read(65536)
-                    if not chunk:
-                        break
-                    f.write(chunk)
+                if not msg.is_multipart():
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Expected multipart/form-data"}).encode("utf-8"))
+                    return
+                    
+                file_data = None
+                for part in msg.get_payload():
+                    name = part.get_param("name", header="content-disposition")
+                    part_filename = part.get_filename()
+                    if name == "wp_key":
+                        wp_key = part.get_payload(decode=True).decode("utf-8", errors="ignore").strip()
+                    elif name == "file" or part_filename:
+                        if part_filename:
+                            filename = os.path.basename(part_filename)
+                            file_data = part.get_payload(decode=True)
+                            
+                if not wp_key or wp_key not in ("wp1_topside_excl", "wp1_topside_structure", "wp1_jacket", "wp2_pipeline"):
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Invalid or missing wp_key parameter"}).encode("utf-8"))
+                    return
+                if not filename or file_data is None:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "No file uploaded in 'file' field"}).encode("utf-8"))
+                    return
+                save_path = os.path.join(WORKSPACE_DIR, filename)
+                with open(save_path, "wb") as f:
+                    f.write(file_data)
                     
             mapping = load_uploads_mapping()
             mapping[wp_key] = filename

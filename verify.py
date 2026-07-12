@@ -25,6 +25,8 @@ for key, name in sections:
     fname = sec.get("filename", "Aggregated (4 files)")
     print(f"--- {name} [{fname}] ---")
     print(f"  Total Deliverables:        {kpi['total_docs']}")
+    print(f"  Overall Progress (Plan vs Act): {kpi.get('plan_progress_pct', 0.0):.2f}% Baseline Plan vs. {kpi.get('actual_progress_pct', 0.0):.2f}% Achieved (Forecast: {kpi.get('forecast_progress_pct', 0.0):.2f}%)")
+    print(f"  Schedule Performance Index: SPI = {kpi.get('spi', 1.0):.2f} (Variance: {kpi.get('variance_pct', 0.0):+.2f}%)")
     print(f"  Total Delayed Gates:       {kpi['delayed_count']} (Type 3.1 Submitted Late: {kpi['delayed_type1_count']} | Type 3.2 Overdue: {kpi['delayed_type2_count']})")
     print(f"  14-Day Lookahead Risk:     {kpi['lookahead_count']} gates due in 14 days ({kpi['lookahead_slipping_count']} slipping from baseline Plan)")
     print()

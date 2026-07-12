@@ -290,25 +290,59 @@ def compute_delay_and_lookahead(docs, today):
     
     disc_summary = {}
     
+    total_plan_prog = 0.0
+    total_fore_prog = 0.0
+    total_act_prog = 0.0
+    
     for d in docs:
         disc = d["discipline"]
         if disc not in disc_summary:
             disc_summary[disc] = {
                 "total": 0, "delayed": 0, "type3_1": 0, "type3_2": 0,
                 "not_submitted": 0, "ifr_sub": 0, "ifa_sub": 0, "afc_sub": 0,
-                "lookahead": 0
+                "lookahead": 0, "act_prog_sum": 0.0, "plan_prog_sum": 0.0, "fore_prog_sum": 0.0
             }
         disc_summary[disc]["total"] += 1
         
         status = d["status"]
         if status == "AFC Submitted":
             disc_summary[disc]["afc_sub"] += 1
+            act_prog = 100.0
         elif status == "IFA Submitted":
             disc_summary[disc]["ifa_sub"] += 1
+            act_prog = 70.0
         elif status == "IFR Submitted":
             disc_summary[disc]["ifr_sub"] += 1
+            act_prog = 50.0
         else:
             disc_summary[disc]["not_submitted"] += 1
+            act_prog = 0.0
+            
+        if d["afc_plan"] is not None and d["afc_plan"] <= today:
+            plan_prog = 100.0
+        elif d["ifa_plan"] is not None and d["ifa_plan"] <= today:
+            plan_prog = 70.0
+        elif d["ifr_plan"] is not None and d["ifr_plan"] <= today:
+            plan_prog = 50.0
+        else:
+            plan_prog = 0.0
+            
+        if d["afc_forecast"] is not None and d["afc_forecast"] <= today:
+            fore_prog = 100.0
+        elif d["ifa_forecast"] is not None and d["ifa_forecast"] <= today:
+            fore_prog = 70.0
+        elif d["ifr_forecast"] is not None and d["ifr_forecast"] <= today:
+            fore_prog = 50.0
+        else:
+            fore_prog = 0.0
+            
+        total_act_prog += act_prog
+        total_plan_prog += plan_prog
+        total_fore_prog += fore_prog
+        
+        disc_summary[disc]["act_prog_sum"] += act_prog
+        disc_summary[disc]["plan_prog_sum"] += plan_prog
+        disc_summary[disc]["fore_prog_sum"] += fore_prog
             
         doc_delayed_entries = []
         doc_lookahead_entries = []
@@ -408,6 +442,19 @@ def compute_delay_and_lookahead(docs, today):
             sd[k] = format_date(sd[k])
         serialized_docs.append(sd)
         
+    total_docs = len(docs)
+    plan_progress_pct = round(total_plan_prog / total_docs, 2) if total_docs > 0 else 0.0
+    forecast_progress_pct = round(total_fore_prog / total_docs, 2) if total_docs > 0 else 0.0
+    actual_progress_pct = round(total_act_prog / total_docs, 2) if total_docs > 0 else 0.0
+    variance_pct = round(actual_progress_pct - plan_progress_pct, 2)
+    spi = round(actual_progress_pct / plan_progress_pct, 2) if plan_progress_pct > 0 else (1.00 if actual_progress_pct >= 100.0 else 0.0)
+    
+    for disc, dsum in disc_summary.items():
+        dtot = max(dsum["total"], 1)
+        dsum["actual_progress_pct"] = round(dsum.get("act_prog_sum", 0.0) / dtot, 2)
+        dsum["plan_progress_pct"] = round(dsum.get("plan_prog_sum", 0.0) / dtot, 2)
+        dsum["forecast_progress_pct"] = round(dsum.get("fore_prog_sum", 0.0) / dtot, 2)
+        
     return {
         "docs": serialized_docs,
         "delayed_list": delayed_list,
@@ -424,10 +471,138 @@ def compute_delay_and_lookahead(docs, today):
             "delayed_type2_docs_count": len(set(d["doc_no"] for d in delayed_list if d["delay_type_code"] == "3.2")),
             "lookahead_count": len(lookahead_list),
             "lookahead_docs_count": len(set(d["doc_no"] for d in lookahead_list)),
-            "lookahead_slipping_count": lookahead_slipping
+            "lookahead_slipping_count": lookahead_slipping,
+            "plan_progress_pct": plan_progress_pct,
+            "forecast_progress_pct": forecast_progress_pct,
+            "actual_progress_pct": actual_progress_pct,
+            "variance_pct": variance_pct,
+            "spi": spi
         },
         "discipline_summary": disc_summary
     }
+
+def extract_official_summary_kpis(files):
+    metrics = {
+        "wp1_topside_excl": {"plan": 0.0, "forecast": 0.0, "actual": 0.0, "source": ""},
+        "wp1_topside_structure": {"plan": 0.0, "forecast": 0.0, "actual": 0.0, "source": ""},
+        "wp1_jacket": {"plan": 0.0, "forecast": 0.0, "actual": 0.0, "source": ""},
+        "wp2_pipeline": {"plan": 0.0, "forecast": 0.0, "actual": 0.0, "source": "", "cutoff_date": "-"}
+    }
+    
+    # 1. WP1 Topside Excl
+    fpath = files.get("wp1_topside_excl")
+    if fpath and os.path.exists(fpath):
+        wb = openpyxl.load_workbook(fpath, read_only=True, data_only=True)
+        if "EDSR Report" in wb.sheetnames:
+            ws = wb["EDSR Report"]
+            for row in ws.iter_rows(min_row=2750, max_row=2810, values_only=True):
+                if not row or len(row) < 34:
+                    continue
+                c1 = str(row[1] or "").strip().lower() if len(row) > 1 else ""
+                c0 = str(row[0] or "").strip().lower() if len(row) > 0 else ""
+                if c1 == "total :" or c0 == "total :" or c1 == "wk1 - work package 1 (greenfield) total :":
+                    act_val = row[30] if len(row) > 30 and isinstance(row[30], (int, float)) else 0.0
+                    plan_val = row[33] if len(row) > 33 and isinstance(row[33], (int, float)) else 0.0
+                    if act_val > 0 or plan_val > 0:
+                        metrics["wp1_topside_excl"]["actual"] = round(act_val * 100 if act_val <= 1.5 else act_val, 2)
+                        metrics["wp1_topside_excl"]["plan"] = round(plan_val * 100 if plan_val <= 1.5 else plan_val, 2)
+                        metrics["wp1_topside_excl"]["forecast"] = metrics["wp1_topside_excl"]["plan"]
+                        metrics["wp1_topside_excl"]["source"] = "EDSR Report Row 2788 Total :"
+                        if c1 == "total :" or c0 == "total :":
+                            break
+        wb.close()
+        
+    # 2. WP1 Topside Structure
+    fpath = files.get("wp1_topside_structure")
+    if fpath and os.path.exists(fpath):
+        wb = openpyxl.load_workbook(fpath, read_only=True, data_only=True)
+        if "Progress Summary" in wb.sheetnames:
+            ws = wb["Progress Summary"]
+            for r_idx, row in enumerate(ws.iter_rows(min_row=7, max_row=12, values_only=True), 7):
+                if not row or len(row) < 16:
+                    continue
+                title = " ".join([str(v) for v in row[:6] if v is not None]).strip().lower()
+                if "overall topsides" in title or (r_idx == 8 and "topsides" in title):
+                    plan_val = row[13] if isinstance(row[13], (int, float)) else 0.0
+                    fore_val = row[14] if isinstance(row[14], (int, float)) else 0.0
+                    act_val = row[15] if isinstance(row[15], (int, float)) else 0.0
+                    metrics["wp1_topside_structure"]["plan"] = round(plan_val * 100 if plan_val <= 1.5 else plan_val, 2)
+                    metrics["wp1_topside_structure"]["forecast"] = round(fore_val * 100 if fore_val <= 1.5 else fore_val, 2)
+                    metrics["wp1_topside_structure"]["actual"] = round(act_val * 100 if act_val <= 1.5 else act_val, 2)
+                    metrics["wp1_topside_structure"]["source"] = "Progress Summary Row Overall Topsides"
+                    break
+        wb.close()
+        
+    # 3. WP1 Jacket
+    fpath = files.get("wp1_jacket")
+    if fpath and os.path.exists(fpath):
+        wb = openpyxl.load_workbook(fpath, read_only=True, data_only=True)
+        if "Progress Summary" in wb.sheetnames:
+            ws = wb["Progress Summary"]
+            for r_idx, row in enumerate(ws.iter_rows(min_row=11, max_row=15, values_only=True), 11):
+                if not row or len(row) < 16:
+                    continue
+                title = " ".join([str(v) for v in row[:6] if v is not None]).strip().lower()
+                if "overall jacket" in title or (r_idx == 12 and "jacket" in title):
+                    plan_val = row[13] if isinstance(row[13], (int, float)) else 0.0
+                    fore_val = row[14] if isinstance(row[14], (int, float)) else 0.0
+                    act_val = row[15] if isinstance(row[15], (int, float)) else 0.0
+                    metrics["wp1_jacket"]["plan"] = round(plan_val * 100 if plan_val <= 1.5 else plan_val, 2)
+                    metrics["wp1_jacket"]["forecast"] = round(fore_val * 100 if fore_val <= 1.5 else fore_val, 2)
+                    metrics["wp1_jacket"]["actual"] = round(act_val * 100 if act_val <= 1.5 else act_val, 2)
+                    metrics["wp1_jacket"]["source"] = "Progress Summary Row Overall Jacket"
+                    break
+        wb.close()
+        
+    # 4. WP2 Pipeline
+    fpath = files.get("wp2_pipeline")
+    if fpath and os.path.exists(fpath):
+        wb = openpyxl.load_workbook(fpath, read_only=True, data_only=True)
+        if "MDR-Detailed Design-A10" in wb.sheetnames:
+            ws = wb["MDR-Detailed Design-A10"]
+            plan_row = None
+            actual_row = None
+            fore_row = None
+            months_row = None
+            days_row = None
+            
+            for r_idx, row in enumerate(ws.iter_rows(min_row=7, max_row=225, values_only=True), 7):
+                if not row:
+                    continue
+                if r_idx == 8:
+                    months_row = row
+                elif r_idx == 9:
+                    days_row = row
+                elif r_idx == 214:
+                    plan_row = row
+                elif r_idx == 216:
+                    actual_row = row
+                elif r_idx == 218:
+                    fore_row = row
+                    
+            if actual_row and plan_row and fore_row:
+                active_col = -1
+                for col_idx in range(53, min(130, len(actual_row))):
+                    val = actual_row[col_idx]
+                    next_val = actual_row[col_idx + 1] if col_idx + 1 < len(actual_row) else None
+                    if val is not None and isinstance(val, (int, float)) and val > 0:
+                        if next_val is None or not isinstance(next_val, (int, float)) or next_val == 0:
+                            active_col = col_idx
+                            break
+                if active_col != -1:
+                    act_val = actual_row[active_col]
+                    plan_val = plan_row[active_col] if len(plan_row) > active_col else 0.0
+                    fore_val = fore_row[active_col] if len(fore_row) > active_col else 0.0
+                    metrics["wp2_pipeline"]["actual"] = round(act_val * 100 if act_val <= 1.5 else act_val, 2)
+                    metrics["wp2_pipeline"]["plan"] = round(plan_val * 100 if plan_val <= 1.5 else plan_val, 2)
+                    metrics["wp2_pipeline"]["forecast"] = round(fore_val * 100 if fore_val <= 1.5 else fore_val, 2)
+                    m_val = str(months_row[active_col] or "") if months_row and len(months_row) > active_col else ""
+                    d_val = str(days_row[active_col] or "") if days_row and len(days_row) > active_col else ""
+                    metrics["wp2_pipeline"]["cutoff_date"] = f"{d_val} {m_val}".strip()
+                    metrics["wp2_pipeline"]["source"] = f"Row 214/216/218 at Col {active_col+1} ({metrics['wp2_pipeline']['cutoff_date']})"
+        wb.close()
+        
+    return metrics
 
 def extract_all_data(force_refresh=False):
     global _cache
@@ -463,12 +638,79 @@ def extract_all_data(force_refresh=False):
             wp2_pipeline_raw["docs"]
         )
         executive = compute_delay_and_lookahead(all_docs, today)
+        
+        # Override KPIs with exact figures from official summary tables per user request
+        print(f"[{datetime.datetime.now()}] Extracting official summary progress metrics...")
+        official_metrics = extract_official_summary_kpis(files)
+        
+        wps_map = {
+            "wp1_topside_excl": wp1_topside_excl,
+            "wp1_topside_structure": wp1_topside_structure,
+            "wp1_jacket": wp1_jacket,
+            "wp2_pipeline": wp2_pipeline
+        }
+        
+        total_docs_all = 0
+        weighted_plan = 0.0
+        weighted_forecast = 0.0
+        weighted_actual = 0.0
+        
+        for wp_key, wp_obj in wps_map.items():
+            off = official_metrics.get(wp_key)
+            if off and (off["plan"] > 0 or off["actual"] > 0):
+                wp_obj["kpi"]["plan_progress_pct"] = off["plan"]
+                wp_obj["kpi"]["forecast_progress_pct"] = off["forecast"]
+                wp_obj["kpi"]["actual_progress_pct"] = off["actual"]
+                wp_obj["kpi"]["variance_pct"] = round(off["actual"] - off["plan"], 2)
+                wp_obj["kpi"]["spi"] = round(off["actual"] / off["plan"], 2) if off["plan"] > 0 else 0.0
+                if wp_key == "wp2_pipeline" and off.get("cutoff_date", "-") != "-":
+                    wp_obj["kpi"]["cutoff_date"] = off["cutoff_date"]
+            
+            docs_cnt = max(1, wp_obj["kpi"].get("total_docs", 1))
+            total_docs_all += docs_cnt
+            weighted_plan += wp_obj["kpi"]["plan_progress_pct"] * docs_cnt
+            weighted_forecast += wp_obj["kpi"]["forecast_progress_pct"] * docs_cnt
+            weighted_actual += wp_obj["kpi"]["actual_progress_pct"] * docs_cnt
+            
+        if total_docs_all > 0:
+            executive["kpi"]["plan_progress_pct"] = round(weighted_plan / total_docs_all, 2)
+            executive["kpi"]["forecast_progress_pct"] = round(weighted_forecast / total_docs_all, 2)
+            executive["kpi"]["actual_progress_pct"] = round(weighted_actual / total_docs_all, 2)
+            executive["kpi"]["variance_pct"] = round(executive["kpi"]["actual_progress_pct"] - executive["kpi"]["plan_progress_pct"], 2)
+            executive["kpi"]["spi"] = round(executive["kpi"]["actual_progress_pct"] / executive["kpi"]["plan_progress_pct"], 2) if executive["kpi"]["plan_progress_pct"] > 0 else 0.0
+
         executive["filenames"] = {
             "Topside Excl. Structure": wp1_topside_excl["filename"],
             "Topside Structure": wp1_topside_structure["filename"],
             "Jacket": wp1_jacket["filename"],
             "Pipeline": wp2_pipeline["filename"]
         }
+        executive["wp_summary"] = [
+            {
+                "wp_key": "wp1_topside_excl",
+                "wp_name": "WP-1 Topside Excl. Structure",
+                "filename": wp1_topside_excl["filename"],
+                "kpi": wp1_topside_excl["kpi"]
+            },
+            {
+                "wp_key": "wp1_topside_structure",
+                "wp_name": "WP-1 Topside Structure",
+                "filename": wp1_topside_structure["filename"],
+                "kpi": wp1_topside_structure["kpi"]
+            },
+            {
+                "wp_key": "wp1_jacket",
+                "wp_name": "WP-1 Jacket",
+                "filename": wp1_jacket["filename"],
+                "kpi": wp1_jacket["kpi"]
+            },
+            {
+                "wp_key": "wp2_pipeline",
+                "wp_name": "WP-2 Pipeline",
+                "filename": wp2_pipeline["filename"],
+                "kpi": wp2_pipeline["kpi"]
+            }
+        ]
         
         payload = {
             "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

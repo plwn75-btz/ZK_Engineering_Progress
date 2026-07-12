@@ -835,3 +835,133 @@ tbody tr:hover td {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
 }
+
+/* Overall Progress & SPI Section Styling */
+.progress-section {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.progress-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+}
+
+.progress-kpi-card {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+    border-top: 2px solid rgba(56, 189, 248, 0.4);
+}
+
+.progress-card-act {
+    border-top-color: var(--accent-emerald);
+}
+
+.progress-card-spi {
+    border-top-color: var(--accent-yellow);
+}
+
+.progress-value-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 12px 0 8px 0;
+}
+
+.progress-big-val {
+    font-family: var(--font-heading);
+    font-size: 32px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+    text-shadow: 0 0 15px rgba(255, 255, 255, 0.15);
+}
+
+.variance-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--accent-emerald);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.variance-badge.negative {
+    background: rgba(244, 63, 94, 0.2);
+    color: var(--accent-rose);
+    border-color: rgba(244, 63, 94, 0.4);
+}
+
+.spi-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    background: rgba(234, 179, 8, 0.2);
+    color: var(--accent-yellow);
+    border: 1px solid rgba(234, 179, 8, 0.4);
+}
+
+.spi-badge.ahead {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--accent-emerald);
+    border-color: rgba(16, 185, 129, 0.4);
+}
+
+.spi-badge.behind {
+    background: rgba(244, 63, 94, 0.2);
+    color: var(--accent-rose);
+    border-color: rgba(244, 63, 94, 0.4);
+}
+
+.executive-breakdown-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+.wp-table-card, .wp-chart-card {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+}
+
+.wp-summary-table {
+    width: 100%;
+    margin-top: 12px;
+}
+
+.wp-summary-table th {
+    padding: 12px 14px;
+    font-size: 13px;
+    background: rgba(15, 23, 42, 0.8);
+}
+
+.wp-summary-table td {
+    padding: 12px 14px;
+    font-size: 13.5px;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+}
+
+.wp-row-total {
+    font-weight: 700;
+    background: rgba(56, 189, 248, 0.1);
+    color: #ffffff;
+}
+
+@media (max-width: 1200px) {
+    .progress-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .executive-breakdown-grid {
+        grid-template-columns: 1fr;
+    }
+}

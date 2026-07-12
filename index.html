@@ -191,6 +191,97 @@
             </div>
         </section>
 
+        <!-- Overall Progress & SPI Section (Featured on First Tab & WP Tabs) -->
+        <section class="progress-section" id="overallProgressSection">
+            <div class="progress-kpi-grid">
+                <div class="progress-kpi-card glass-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Baseline Plan Progress</span>
+                        <span class="kpi-icon">🎯</span>
+                    </div>
+                    <div class="progress-value-row">
+                        <span class="progress-big-val" id="kpiPlanProgress">--%</span>
+                    </div>
+                    <div class="kpi-footer">Cumulative baseline schedule target</div>
+                </div>
+                <div class="progress-kpi-card glass-card progress-card-act">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Achieved Actual Progress</span>
+                        <span class="kpi-icon">📈</span>
+                    </div>
+                    <div class="progress-value-row">
+                        <span class="progress-big-val alert-green" id="kpiActualProgress">--%</span>
+                        <span class="variance-badge" id="kpiProgressVariance">-- variance</span>
+                    </div>
+                    <div class="kpi-footer">Earned engineering deliverable value</div>
+                </div>
+                <div class="progress-kpi-card glass-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Forecast Expected Progress</span>
+                        <span class="kpi-icon">🔮</span>
+                    </div>
+                    <div class="progress-value-row">
+                        <span class="progress-big-val" id="kpiForecastProgress">--%</span>
+                    </div>
+                    <div class="kpi-footer">Contractor projected completion</div>
+                </div>
+                <div class="progress-kpi-card glass-card progress-card-spi">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Schedule Performance Index</span>
+                        <span class="kpi-icon">⚡</span>
+                    </div>
+                    <div class="progress-value-row">
+                        <span class="progress-big-val" id="kpiSpi">--</span>
+                        <span class="spi-badge" id="kpiSpiBadge">--</span>
+                    </div>
+                    <div class="kpi-footer" title="SPI = Actual Progress / Plan Progress (Target: ≥ 1.00)">SPI = Actual / Plan (Target ≥ 1.00)</div>
+                </div>
+            </div>
+
+            <!-- Executive First Tab Only: Work Package Breakdown Table & Chart -->
+            <div class="executive-breakdown-grid" id="executiveBreakdownContainer">
+                <div class="wp-table-card glass-card">
+                    <div class="chart-header">
+                        <div>
+                            <h3>Executive Work Package Progress Summary</h3>
+                            <span class="chart-tag">Overall Progress across all 4 Work Packages</span>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="wp-summary-table" id="wpSummaryTable">
+                            <thead>
+                                <tr>
+                                    <th>Work Package</th>
+                                    <th>Scope (Docs)</th>
+                                    <th>Plan %</th>
+                                    <th>Forecast %</th>
+                                    <th>Actual %</th>
+                                    <th>Variance</th>
+                                    <th>SPI</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="wpSummaryTableBody">
+                                <!-- Populated dynamically by app.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="wp-chart-card glass-card">
+                    <div class="chart-header">
+                        <div>
+                            <h3>Work Package Progress Comparison</h3>
+                            <span class="chart-tag">Plan vs. Forecast vs. Actual (%)</span>
+                        </div>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="wpProgressChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Charts Grid -->
         <section class="charts-grid">
             <div class="chart-box glass-card">

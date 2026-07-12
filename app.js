@@ -6,6 +6,7 @@ let ACTIVE_SUB = 'mdr';
 // Chart instances
 let progressChartInstance = null;
 let delayChartInstance = null;
+let wpProgressChartInstance = null;
 
 const WP_NAMES = {
     executive: 'Executive Overview across All Work Packages',
@@ -257,8 +258,206 @@ function renderDashboard() {
     }
     document.getElementById('subCountLookahead').textContent = (kpi.lookahead_docs_count || 0).toLocaleString();
     
+    // Overall Progress & SPI updates
+    const planPct = kpi.plan_progress_pct || 0.0;
+    const actPct = kpi.actual_progress_pct || 0.0;
+    const forePct = kpi.forecast_progress_pct || 0.0;
+    const varPct = kpi.variance_pct || (actPct - planPct);
+    const spiVal = kpi.spi || (planPct > 0 ? actPct / planPct : 1.00);
+    
+    if (document.getElementById('kpiPlanProgress')) {
+        document.getElementById('kpiPlanProgress').textContent = `${planPct.toFixed(2)}%`;
+        document.getElementById('kpiActualProgress').textContent = `${actPct.toFixed(2)}%`;
+        document.getElementById('kpiForecastProgress').textContent = `${forePct.toFixed(2)}%`;
+        
+        const varElem = document.getElementById('kpiProgressVariance');
+        varElem.textContent = `${varPct >= 0 ? '+' : ''}${varPct.toFixed(2)}% variance`;
+        if (varPct < 0) {
+            varElem.classList.add('negative');
+        } else {
+            varElem.classList.remove('negative');
+        }
+        
+        document.getElementById('kpiSpi').textContent = spiVal.toFixed(2);
+        const spiBadge = document.getElementById('kpiSpiBadge');
+        spiBadge.classList.remove('ahead', 'behind');
+        if (spiVal >= 1.01) {
+            spiBadge.textContent = '🚀 Ahead of Schedule';
+            spiBadge.classList.add('ahead');
+        } else if (spiVal >= 0.98) {
+            spiBadge.textContent = '⚡ On Schedule';
+            spiBadge.classList.add('ahead');
+        } else {
+            spiBadge.textContent = '⚠️ Behind Schedule';
+            spiBadge.classList.add('behind');
+        }
+    }
+    
+    // Executive First Tab Breakdown Table & Chart visibility
+    const execContainer = document.getElementById('executiveBreakdownContainer');
+    if (execContainer) {
+        if (ACTIVE_WP === 'executive') {
+            execContainer.style.display = 'grid';
+            renderExecutiveBreakdown();
+        } else {
+            execContainer.style.display = 'none';
+        }
+    }
+    
     renderCharts();
     renderTable();
+}
+
+function renderExecutiveBreakdown() {
+    if (!DASHBOARD_DATA || !DASHBOARD_DATA.executive) return;
+    const wpSummary = DASHBOARD_DATA.executive.wp_summary || [];
+    const tbody = document.getElementById('wpSummaryTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    // Render the 4 work package rows
+    wpSummary.forEach(item => {
+        const kpi = item.kpi || {};
+        const tr = document.createElement('tr');
+        const planP = (kpi.plan_progress_pct || 0.0).toFixed(2);
+        const foreP = (kpi.forecast_progress_pct || 0.0).toFixed(2);
+        const actP = (kpi.actual_progress_pct || 0.0).toFixed(2);
+        const varP = (kpi.variance_pct || 0.0).toFixed(2);
+        const spi = (kpi.spi || 1.00).toFixed(2);
+        
+        let statusBadge = '<span class="spi-badge ahead">On Time</span>';
+        if (kpi.spi >= 1.01) statusBadge = '<span class="spi-badge ahead">Ahead</span>';
+        else if (kpi.spi < 0.98) statusBadge = '<span class="spi-badge behind">Behind</span>';
+        
+        tr.innerHTML = `
+            <td style="font-weight: 600; color: #38bdf8;">${item.wp_name}</td>
+            <td>${(kpi.total_docs || 0).toLocaleString()}</td>
+            <td>${planP}%</td>
+            <td>${foreP}%</td>
+            <td style="font-weight: 700; color: #10b981;">${actP}%</td>
+            <td style="color: ${varP >= 0 ? '#10b981' : '#f43f5e'}; font-weight: 600;">${varP >= 0 ? '+' : ''}${varP}%</td>
+            <td style="font-weight: 700;">${spi}</td>
+            <td>${statusBadge}</td>
+        `;
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', () => {
+            const tabBtn = document.querySelector(`.wp-tab[data-wp="${item.wp_key}"]`);
+            if (tabBtn) tabBtn.click();
+        });
+        tbody.appendChild(tr);
+    });
+    
+    // Add Total Executive Row
+    const execKpi = DASHBOARD_DATA.executive.kpi || {};
+    const trTotal = document.createElement('tr');
+    trTotal.className = 'wp-row-total';
+    const totalPlan = (execKpi.plan_progress_pct || 0.0).toFixed(2);
+    const totalFore = (execKpi.forecast_progress_pct || 0.0).toFixed(2);
+    const totalAct = (execKpi.actual_progress_pct || 0.0).toFixed(2);
+    const totalVar = (execKpi.variance_pct || 0.0).toFixed(2);
+    const totalSpi = (execKpi.spi || 1.00).toFixed(2);
+    
+    let totalBadge = '<span class="spi-badge ahead">On Time</span>';
+    if (execKpi.spi >= 1.01) totalBadge = '<span class="spi-badge ahead">Ahead</span>';
+    else if (execKpi.spi < 0.98) totalBadge = '<span class="spi-badge behind">Behind</span>';
+    
+    trTotal.innerHTML = `
+        <td style="color: #ffffff;">⭐ TOTAL PROJECT EXECUTIVE SUMMARY</td>
+        <td>${(execKpi.total_docs || 0).toLocaleString()}</td>
+        <td>${totalPlan}%</td>
+        <td>${totalFore}%</td>
+        <td style="color: #10b981;">${totalAct}%</td>
+        <td style="color: ${totalVar >= 0 ? '#10b981' : '#f43f5e'};">${totalVar >= 0 ? '+' : ''}${totalVar}%</td>
+        <td>${totalSpi}</td>
+        <td>${totalBadge}</td>
+    `;
+    tbody.appendChild(trTotal);
+    
+    renderExecutiveWpChart(wpSummary, execKpi);
+}
+
+function renderExecutiveWpChart(wpSummary, execKpi) {
+    const canvas = document.getElementById('wpProgressChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (wpProgressChartInstance) wpProgressChartInstance.destroy();
+    
+    const labels = wpSummary.map(item => item.wp_name.replace('WP-1 ', '').replace('WP-2 ', ''));
+    labels.push('Total Project');
+    
+    const planData = wpSummary.map(item => item.kpi.plan_progress_pct || 0.0);
+    planData.push(execKpi.plan_progress_pct || 0.0);
+    
+    const foreData = wpSummary.map(item => item.kpi.forecast_progress_pct || 0.0);
+    foreData.push(execKpi.forecast_progress_pct || 0.0);
+    
+    const actData = wpSummary.map(item => item.kpi.actual_progress_pct || 0.0);
+    actData.push(execKpi.actual_progress_pct || 0.0);
+    
+    wpProgressChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Baseline Plan %',
+                    data: planData,
+                    backgroundColor: 'rgba(56, 189, 248, 0.75)',
+                    borderColor: '#38bdf8',
+                    borderWidth: 1,
+                    borderRadius: 4
+                },
+                {
+                    label: 'Forecast Expected %',
+                    data: foreData,
+                    backgroundColor: 'rgba(168, 85, 247, 0.75)',
+                    borderColor: '#a855f7',
+                    borderWidth: 1,
+                    borderRadius: 4
+                },
+                {
+                    label: 'Achieved Actual %',
+                    data: actData,
+                    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+                    borderColor: '#10b981',
+                    borderWidth: 1,
+                    borderRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#e2e8f0', font: { family: 'Outfit', weight: 600 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.raw.toFixed(2)}%`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#94a3b8', font: { family: 'Outfit', weight: 600 } },
+                    grid: { color: 'rgba(51, 65, 85, 0.3)' }
+                },
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: {
+                        color: '#94a3b8',
+                        callback: function(val) { return val + '%'; }
+                    },
+                    grid: { color: 'rgba(51, 65, 85, 0.3)' }
+                }
+            }
+        }
+    });
 }
 
 function renderCharts() {

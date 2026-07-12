@@ -1,15 +1,20 @@
-# Python cache
+# Python cache & artifacts
 __pycache__/
 *.py[cod]
 *$py.class
+*.log
+.system_generated/
+scratch/
 
-# Environments
+# Virtual environments
 venv/
 env/
 .env
 
-# OS generated files
+# OS & Office temporary lock files
 .DS_Store
 Thumbs.db
+~$*
+*.tmp
 
-# Note: Master Excel files (*.xlsx, *.xlsm) are explicitly KEPT for cloud deployment on Render.
+# Note: Official Master Excel files (*.xlsx, *.xlsm) and json mapping files are explicitly KEPT for cloud deployment on Render.

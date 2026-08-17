@@ -191,6 +191,71 @@
             </div>
         </section>
 
+        <!-- Status Summary Boxes: PENDING FINAL APPROVAL & COMPLETE (Between Row 1 and Row 2) -->
+        <section class="status-summary-section">
+            <div class="status-summary-grid">
+                <!-- Status Box 1: PENDING FINAL APPROVAL -->
+                <div class="status-summary-card glass-card card-pending-approval">
+                    <div class="status-card-header">
+                        <div class="status-card-title-group">
+                            <span class="status-icon-badge icon-purple">⏳</span>
+                            <div>
+                                <h3 class="status-card-title">PENDING FINAL APPROVAL</h3>
+                                <span class="status-card-desc">Submitted for Client Review / AFC Sub (10% Gate)</span>
+                            </div>
+                        </div>
+                        <div class="status-total-badge badge-purple" id="boxPendingApprovalTotal">-- Docs</div>
+                    </div>
+                    <div class="status-breakdown-row">
+                        <div class="status-pill pill-purple">
+                            <span class="pill-type">ENG</span>
+                            <span class="pill-val" id="boxPendingEng">--</span>
+                        </div>
+                        <div class="status-pill-sep">/</div>
+                        <div class="status-pill pill-purple">
+                            <span class="pill-type">TBE</span>
+                            <span class="pill-val" id="boxPendingTbe">--</span>
+                        </div>
+                        <div class="status-pill-sep">/</div>
+                        <div class="status-pill pill-purple">
+                            <span class="pill-type">MR</span>
+                            <span class="pill-val" id="boxPendingMr">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Box 2: COMPLETE -->
+                <div class="status-summary-card glass-card card-complete">
+                    <div class="status-card-header">
+                        <div class="status-card-title-group">
+                            <span class="status-icon-badge icon-emerald">✅</span>
+                            <div>
+                                <h3 class="status-card-title">COMPLETE</h3>
+                                <span class="status-card-desc">Final Approved & Closed Deliverables / AP & AFC App (100% Gate)</span>
+                            </div>
+                        </div>
+                        <div class="status-total-badge badge-emerald" id="boxCompleteTotal">-- Docs (--%)</div>
+                    </div>
+                    <div class="status-breakdown-row">
+                        <div class="status-pill pill-emerald">
+                            <span class="pill-type">ENG</span>
+                            <span class="pill-val" id="boxCompleteEng">-- (--%)</span>
+                        </div>
+                        <div class="status-pill-sep">/</div>
+                        <div class="status-pill pill-emerald">
+                            <span class="pill-type">TBE</span>
+                            <span class="pill-val" id="boxCompleteTbe">-- (--%)</span>
+                        </div>
+                        <div class="status-pill-sep">/</div>
+                        <div class="status-pill pill-emerald">
+                            <span class="pill-type">MR</span>
+                            <span class="pill-val" id="boxCompleteMr">-- (--%)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Overall Progress & SPI Section (Featured on First Tab & WP Tabs) -->
         <section class="progress-section" id="overallProgressSection">
             <div class="progress-kpi-grid">
@@ -322,13 +387,19 @@
                     <option value="ALL">All Milestones</option>
                     <option value="IFR">IFR (Interdisciplinary Review)</option>
                     <option value="IFA">IFA (Issued for Approval)</option>
-                    <option value="AFC">AFC (Approved for Construction)</option>
+                    <option value="AFC Sub">AFC Sub (10% Submission)</option>
+                    <option value="AFC App">AFC App / AP (Final Approval)</option>
                 </select>
             </div>
             <div class="filter-group">
-                <label for="statusSelect">Breach Status:</label>
+                <label for="statusSelect">Document / Breach Status:</label>
                 <select id="statusSelect">
-                    <option value="ALL">All Statuses</option>
+                    <option value="ALL">All Statuses & Breaches</option>
+                    <option value="COMPLETE">✅ COMPLETE (Final Approved)</option>
+                    <option value="PENDING_APPROVAL">⏳ PENDING FINAL APPROVAL</option>
+                    <option value="IFA_SUB">🔵 IFA Submitted</option>
+                    <option value="IFR_SUB">🔷 IFR Submitted</option>
+                    <option value="NOT_SUB">⚪ Not Yet Submitted</option>
                     <option value="ON_TIME">⚡ On-Time / On-Schedule</option>
                     <option value="DELAYED">🚨 All Delayed (Type 3.1 & 3.2)</option>
                     <option value="TYPE3_1">🟤 Type 3.1 (Submitted Late)</option>

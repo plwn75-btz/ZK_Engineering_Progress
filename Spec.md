@@ -1,7 +1,7 @@
 # Engineering Progress Tracking & Analytics Dashboard — Technical Specification (Spec.md)
 
 **Project : Z1F Engineering Progress Measurement.**  
-**Document Version:** 2.1.0 (Multi-Work Package Architecture with Weekly Upload Scope)  
+**Document Version:** 3.0.0 (14-Aug Cut-off with Final Approval Lifecycle & Dual Gate Tracking)  
 **Status:** Approved for Implementation  
 
 ---
@@ -11,10 +11,11 @@
 In multi-contractor Offshore & Onshore Engineering, Procurement, and Construction (EPC) projects, tracking engineering progress across distinct work packages requires unifying disparate reporting formats into a single, cohesive analytics dashboard. 
 
 The **Engineering Progress Tracking & Analytics Dashboard** automatically ingests, parses, normalizes, and analyzes weekly Master Document Register (MDR) and Engineering Deliverable Status Report (EDSR) Excel cut-offs from contractors across four major engineering domains:
-1. **WP-1 Topside Excl. Structure** (`00210 EDSR as of WE 27 03 Jul 26.xlsm`)
-2. **WP-1 Topside Structure** (`Z1F Topsides EDSR cut-off_3Jul26.xlsx`)
-3. **WP-1 Jacket** (`Z1F Jacket EDSR cut-off_3Jul26.xlsx`)
-4. **WP-2 Pipeline** (`Att.2. WP2 Engineering Progress Measurement_030726_Updated.xlsx`)
+1. **WP-1 Topside Excl. Structure** (`00210 EDSR as of WE 33 14 Aug 26.xlsm` — 458 Deliverables)
+2. **WP-1 Topside Structure** (`Z1F Topsides EDSR cut-off_14Aug26.xlsx` — 237 Deliverables)
+3. **WP-1 Jacket** (`Z1F Jacket EDSR cut-off_14Aug26.xlsx` — 653 Deliverables)
+4. **WP-2 Pipeline** (`Att.2. WP2 Engineering Progress Measurement_030726_Updated.xlsx` — 143 Deliverables)
+**Total Master Deliverables Inventory: 1,491 Deliverables**
 
 The dashboard replaces manual spreadsheets with a high-performance, dark-themed glassmorphism web application providing real-time executive progress tracking, discipline slippage analysis, Schedule Performance Index (SPI) curves, and automated delay/lookahead alerts anchored to `TODAY` vs. `FORECAST` tracking dates.
 
@@ -22,344 +23,150 @@ Crucially, to ensure 100% audit compliance with official contractor reports, the
 
 ---
 
-## 2. Ingestion Engine Specification & Excel Mapping Schema
+## 2. Document Status Lifecycle Specification (`COMPLETE` & `PENDING FINAL APPROVAL`)
 
-The backend ingestion engine (`server.py`) must handle the exact structural variations across the 4 source Excel files without requiring manual file modifications.
+Deliverable lifecycle tracking distinguishes between initial contractor issue, intermediate review, final contractor submission, and final client approval (`COMPLETE`):
 
-### 2.1 File 1: WP-1 Topside Excl. Structure (`00210 EDSR as of WE 27 03 Jul 26.xlsm`)
+### 2.1 Status Hierarchy & Assignment Rules
+1. **`COMPLETE` (Final Approved / 100% Gate Closed):**
+   * *00210 EDSR (Topside Excl. Structure):* `AP` (`DocStatusID == 'AP'`) Achieved date is filled in `Gates` sheet.
+   * *Z1F Topsides & Jacket EDSR:* `AFC App. (20%)` Actual date is filled with a valid completion date.
+   * *WP-2 Pipeline:* `AFC` Actual date is filled with a valid completion date.
+2. **`PENDING FINAL APPROVAL` (Submitted for Final Approval / 10% Gate Closed, 20% Approval Pending):**
+   * *00210 EDSR (Topside Excl. Structure):* `AFC` Achieved date is filled with date, **AND** `AP (100%)` Achieved date is blank/empty.
+   * *Z1F Topsides & Jacket EDSR:* `AFC Sub (10%)` Actual date is filled with date, **AND** `AFC App. (20%)` is blank/empty.
+   * *WP-2 Pipeline:* `AFC` Actual date is filled (or marked COMPLETE).
+3. **`IFA Submitted` (Issued for Approval Review):**
+   * `IFA` Actual date is filled with date, **AND** later gates (`AFC Sub`, `AFC App`, `AP`) are blank/empty.
+4. **`IFR Submitted` (Issued for Interdisciplinary Review):**
+   * `IFR` Actual date is filled with date, **AND** later gates (`IFA`, `AFC Sub`, `AFC App`, `AP`) are blank/empty.
+5. **`Not Yet Submitted`:**
+   * No actual submission date exists for any review milestone.
+
+---
+
+## 3. Ingestion Engine Specification & Excel Mapping Schema
+
+The backend ingestion engine (`server.py`) handles structural variations across all source Excel files without requiring manual modifications.
+
+### 3.1 File 1: WP-1 Topside Excl. Structure (`00210 EDSR as of WE 33 14 Aug 26.xlsm`)
 * **Primary Deliverable Source (`FilteredDEL` / `DEL` Sheet):**
   * `Doc No`: Column `DELID` (Col A)
   * `Title`: Column `DELName` (Col B)
-  * `Discipline`: Derived from `CAName` / `CTIDName` (e.g., `Electrical`, `Mechanical`, `Process`)
+  * `Discipline`: Column `CAName` (Col C) / `CTIDName` (Col E)
 * **Milestone Dates Source (`Gates` Sheet):**
-  * Records are relational (`1 to N` per `DELID`).
-  * Filter rows where `DocStatusID` $\in$ `['IFR', 'IFA', 'AFC']` (or `IFI`, `IDC` where applicable).
+  * Relational records (`1 to N` per `DELID`).
+  * Gates parsed: `IFR`, `IFA`, `AFC` (10% milestone), `AP` (100% Final Approval gate).
   * `Plan Date`: Column K (`Planned Finish`)
-  * `Forecast Date`: Column O (`Forecast Finish`, falling back to Column K if `'-'` or empty)
-  * `Actual Date`: Column M (`Actual Finish`, parsed if valid datetime/date string, empty if `'-'` or `None`)
+  * `Forecast Date`: Column O (`Forecast Finish`, fallback to Col K)
+  * `Actual Date`: Column M (`Actual Finish`)
+* **Official Progress Extraction (`EDSR Report` Sheet):**
+  * Row 2816 (`Total :`): Column S (Actual Progress % = 58.19%), Column K (Planned Progress % = 48.95%), SPI = 1.19.
 
-### 2.2 File 2: WP-1 Topside Structure (`Z1F Topsides EDSR cut-off_3Jul26.xlsx`)
-* **Primary Deliverable Source (`EDSR` Sheet):**
-  * Exact structural match with `WP-1 Jacket` (`EDSR -TOPSIDES`).
-  * Headers on Rows 1 to 3. Data starts at **Row 4**.
-  * `Doc No`: Column D (`Deliverable Title` / Document Number)
-  * `Title`: Column E (`Description`)
-  * `Discipline`: Column B (`Work Package` / Discipline Code)
-* **Milestone Dates Mapping (Columns 1-indexed):**
-  * **IFR (50%) Gate:** `Plan Date` = Col 11, `Forecast Date` = Col 12, `Actual Date` = Col 13
-  * **IFA (20%) Gate:** `Plan Date` = Col 14, `Forecast Date` = Col 15, `Actual Date` = Col 16
-  * **AFC Sub / App Gate:** `Plan Date` = Col 17/20, `Forecast Date` = Col 18/21, `Actual Date` = Col 19/22
-
-### 2.3 File 3: WP-1 Jacket (`Z1F Jacket EDSR cut-off_3Jul26.xlsx`)
+### 3.2 File 2: WP-1 Topside Structure (`Z1F Topsides EDSR cut-off_14Aug26.xlsx`)
 * **Primary Deliverable Source (`EDSR` Sheet):**
   * Headers on Rows 1 to 3. Data starts at **Row 4**.
-  * `Doc No`: Column D (`Deliverable Title` / Document Number)
-  * `Title`: Column E (`Description`)
-  * `Discipline`: Column B (`Work Package` / Discipline Code)
-* **Milestone Dates Mapping (Columns 1-indexed):**
-  * **IFR (50%) Gate:** `Plan Date` = Col 11, `Forecast Date` = Col 12, `Actual Date` = Col 13
-  * **IFA (20%) Gate:** `Plan Date` = Col 14, `Forecast Date` = Col 15, `Actual Date` = Col 16
-  * **AFC Sub / App Gate:** `Plan Date` = Col 17/20, `Forecast Date` = Col 18/21, `Actual Date` = Col 19/22
+  * `Doc No`: Column 4 (0-index 3, `Deliverable Title`)
+  * `Title`: Column 5 (0-index 4, `Description`)
+  * `Discipline`: Column 2 (0-index 1, `Work Package`)
+* **Milestone Dates Mapping (0-indexed):**
+  * **IFR Gate:** Plan = Col 10, Forecast = Col 11, Actual = Col 12
+  * **IFA Gate:** Plan = Col 13, Forecast = Col 14, Actual = Col 15
+  * **AFC Sub (10%) Gate:** Plan = Col 16, Forecast = Col 17, Actual = Col 18
+  * **AFC App (20%) Gate:** Plan = Col 19, Forecast = Col 20, Actual = Col 21
+* **Official Progress Extraction (`Progress Summary` Sheet):**
+  * Row 8 (`Overall Topsides`): Planned % = 67.56%, Actual % = 67.21%, SPI = 0.99.
 
-### 2.4 File 4: WP-2 Pipeline (`Att.2. WP2 Engineering Progress Measurement_030726_Updated.xlsx`)
-* **Primary Deliverable Source (`MDR-Detailed Design-A10` Sheet):**
-  * Data rows start from **Row 11** (Headers on Rows 9 & 10).
-  * `Doc No`: Column I (`Document No.`)
-  * `Title`: Column J (`Document Title`)
-  * `Discipline`: Column D (`Disc`) or Column C (`Area`)
-* **Milestone Dates Mapping (Columns 1-indexed):**
-  * **IFR Gate:** `Plan Date` = Col 21 (`PLAN`), `Actual Date` = Col 22 (`ACTUAL`), `Forecast Date` = Col 23 (`Forecast`)
-  * **IFA Gate:** `Plan Date` = Col 30 (`PLAN`), `Actual Date` = Col 31 (`ACTUAL`), `Forecast Date` = Col 32 (`Forecast`)
-  * **AFC Gate:** `Plan Date` = Col 37 (`PLAN`), `Actual Date` = Col 38 (`ACTUAL`), `Forecast Date` = Col 39/40 (`Forecast`)
+### 3.3 File 3: WP-1 Jacket (`Z1F Jacket EDSR cut-off_14Aug26.xlsx`)
+* **Primary Deliverable Source (`EDSR` Sheet):**
+  * Headers on Rows 1 to 3. Data starts at **Row 4**.
+  * `Doc No`: Column 3 (0-index 2, `Deliverable Title`)
+  * `Title`: Column 4 (0-index 3, `Description`)
+  * `Discipline`: Column 2 (0-index 1, `Work Package`)
+* **Milestone Dates Mapping (0-indexed):**
+  * **IFR Gate:** Plan = Col 9, Forecast = Col 10, Actual = Col 11
+  * **IFA Gate:** Plan = Col 12, Forecast = Col 13, Actual = Col 14
+  * **AFC Sub (10%) Gate:** Plan = Col 15, Forecast = Col 16, Actual = Col 17
+  * **AFC App (20%) Gate:** Plan = Col 18, Forecast = Col 19, Actual = Col 20
+* **Official Progress Extraction (`Progress Summary` Sheet):**
+  * Row 12 (`Overall Jacket & Pile DDE Progress`): Planned % = 47.77%, Actual % = 49.81%, SPI = 1.04.
 
-### 2.5 Official Summary Sheets & Dynamic Cut-off Extraction (`Source of Truth`)
-To ensure executive progress cards (`Baseline Plan Progress`, `Achieved Actual Progress`, `Forecast Expected Progress`, `SPI`) and the first-tab `Executive Work Package Progress Summary` table match official contractor submissions exactly without discrepancy, `server.py` (`extract_official_summary_kpis()`) extracts package-level KPIs directly from summary tables:
-
-1. **WP-1 Topside Excl. Structure (`00210 EDSR as of WE 27 03 Jul 26.xlsm`)**:
-   * **Summary Sheet:** `EDSR Report`
-   * **Target Row:** `Row 2788` (`Total :`)
-   * **Mappings:** `Plan / Forecast Progress %` = Col `AH` (`Col 34`, **36.73%**) | `Actual Progress %` = Col `AE` (`Col 31`, **42.09%**)
-   * **Calculated SPI:** `SPI = Actual / Plan = 42.09 / 36.73 = 1.15` (`+5.36%` variance, `🚀 Ahead of Schedule`)
-
-2. **WP-1 Topside Structure (`Z1F Topsides EDSR cut-off_03ul26.xlsx`)**:
-   * **Summary Sheet:** `Progress Summary`
-   * **Target Row:** `Row 8` (`Overall Topsides DDE Progress`)
-   * **Mappings:** `Plan Progress %` = Col `O` (`Col 15`, **46.70%**) | `Forecast Progress %` = Col `P` (`Col 16`, **46.70%**) | `Actual Progress %` = Col `Q` (`Col 17`, **48.22%**)
-   * **Calculated SPI:** `SPI = 48.22 / 46.70 = 1.03` (`+1.52%` variance, `⚡ On Schedule`)
-
-3. **WP-1 Jacket (`Z1F Jacket EDSR cut-off_03Jul26.xlsx`)**:
-   * **Summary Sheet:** `Progress Summary`
-   * **Target Row:** `Row 12` (`Overall Jacket & Pile DDE Progress`)
-   * **Mappings:** `Plan Progress %` = Col `O` (`Col 15`, **27.37%**) | `Forecast Progress %` = Col `P` (`Col 16`, **27.37%**) | `Actual Progress %` = Col `Q` (`Col 17`, **32.59%**)
-   * **Calculated SPI:** `SPI = 32.59 / 27.37 = 1.19` (`+5.22%` variance, `🚀 Ahead of Schedule`)
-
-4. **WP-2 Pipeline (`Att.2. WP2 Engineering Progress Measurement_030726_Updated.xlsx`) — Dynamic Timeline Detection**:
-   * **Summary Sheet:** `MDR-Detailed Design-A10`
-   * **Target Rows:** `Row 214` (`Plan Cumm`), `Row 216` (`Actual Cumm`), `Row 218` (`Forecast Cumm`).
-   * **Dynamic Cut-Off Column Algorithm:** Rather than hardcoding a single date column, `server.py` scans horizontally across timeline columns starting from `Col 53` (`Col BB`) onwards. It detects the active cut-off date column as the **rightmost column where `Actual Cumm` (`Row 216`) contains a valid positive percentage** before transitioning to empty/zero for future weeks.
-   * **Detected Active Column:** `Col 75` (`Col BW` — `03 July-2026`).
-   * **Mappings:** `Plan Progress %` = `Row 214, Col BW` (**35.16%**) | `Actual Progress %` = `Row 216, Col BW` (**34.75%**) | `Forecast Progress %` = `Row 218, Col BW` (**34.10%**)
-   * **Calculated SPI:** `SPI = 34.75 / 35.16 = 0.99` (`-0.41%` variance, `⚡ On Schedule`)
-
-5. **Executive Overall Aggregation (`All Work Packages Weighted`)**:
-   * Weighted across the `1,461` total deliverables (`453 Topside Excl.` + `226 Topside Struct.` + `639 Jacket` + `143 Pipeline`):
-   * **Overall Baseline Plan Progress:** **34.02%**
-   * **Overall Achieved Actual Progress:** **38.16%**
-   * **Overall Forecast Expected Progress:** **33.92%**
-   * **Overall Schedule Performance Index (SPI):** **1.12** (`+4.14%` variance, `🚀 Ahead of Schedule`)
+### 3.4 File 4: WP-2 Pipeline (`Att.2. WP2 Engineering Progress Measurement_030726_Updated.xlsx`)
+* **Primary Deliverable Source (`MDR` Sheet):**
+  * Data starts at **Row 7**.
+  * `Doc No`: Column C (`DOCUMENT NUMBER`)
+  * `Title`: Column D (`DOCUMENT TITLE`)
+  * `Discipline`: Column B (`DISCIPLINE`)
+* **Milestone Dates Mapping:**
+  * **IFR Gate:** Plan = Col E, Forecast = Col F, Actual = Col G
+  * **IFA Gate:** Plan = Col I, Forecast = Col J, Actual = Col K
+  * **AFC Gate:** Plan = Col M, Forecast = Col N, Actual = Col O
+* **Official Progress Extraction (`S-Curve` Sheet):**
+  * Active Column 75 (`BW`): Planned % = 35.16%, Actual % = 34.75%, Forecast % = 34.10%, SPI = 0.99.
 
 ---
 
-## 3. Weekly Manual Upload & Dynamic Ingestion Scope (`USER Upload Workflow`)
+## 4. Delay & Lookahead Classification Engine
 
-Per user operational requirements, the **USER will update these 4 Excel files on a weekly basis**. Contractors deliver weekly progress files named with varying date, month, and year conventions (e.g., `00210 EDSR as of WE 27 10 Jul 26.xlsm`, `Z1F Topsides EDSR cut-off_10Jul26.xlsx`).
+Every deliverable gate milestone is evaluated against active tracking date `TODAY`:
 
-To ensure maximum user-friendliness and zero technical friction when updating weekly data:
-1. **Interactive Weekly Upload Center Modal:**
-   * Clicking the header button `📁 Weekly Cut-off Upload` opens a user-friendly drag-and-drop upload center.
-   * Users can upload individual cut-off files or drag-and-drop all 4 weekly Excel files simultaneously.
-2. **Intelligent Auto-Detection & Assignment (`server.py` & `app.js`):**
-   * When files are uploaded or dropped into the workspace folder, the server inspects the filename keywords (`00210`/`Excl`, `Topsides`, `Jacket`, `WP2`/`Pipeline`) and internal sheet names (`FilteredDEL`, `EDSR`, `MDR-Detailed Design-A10`) to **automatically map each uploaded file to its exact Work Package**.
-   * If a filename is ambiguous, the upload modal provides simple dropdown selectors allowing the user to confirm:
-     * `[File: 00210 EDSR...xlsm] -> Assign to: WP-1 Topside Excl. Structure`
-     * `[File: Z1F Topsides...xlsx] -> Assign to: WP-1 Topside Structure`
-     * `[File: Z1F Jacket...xlsx] -> Assign to: WP-1 Jacket`
-     * `[File: Att.2. WP2...xlsx] -> Assign to: WP-2 Pipeline`
-3. **Instant Cache Refresh & Live Notification:**
-   * Upon upload, `server.py` immediately saves the file, clears the thread-safe memory cache, re-parses the new weekly records, and updates the dashboard instantly without requiring a server restart.
-   * A clean toast notification confirms: *"✅ Successfully processed [File Name] for [Work Package] as of [Cut-off Date]"*.
+$$\text{Reference Date} = \begin{cases} \text{Forecast Date} & \text{if Forecast Date is valid date} \\ \text{Plan Date} & \text{otherwise} \end{cases}$$
 
----
+### 4.1 Delay Definitions
+* **Type 3.1: Submitted Late (`#b45309` Warm Copper/Brown):**
+  $$\text{Actual Date is present} \land \text{Actual Date} > \text{Reference Date}$$
+  $$\text{Days Delayed} = \text{Actual Date} - \text{Reference Date}$$
+* **Type 3.2: Overdue & Not Submitted (`#ef4444` Vibrant Red):**
+  $$\text{Actual Date is empty} \land \text{TODAY} \ge \text{Reference Date}$$
+  $$\text{Days Overdue} = \text{TODAY} - \text{Reference Date}$$
+* **Critical Aging Flag (`Urgency: Critical`):**
+  $$\text{Days Delayed / Overdue} > 30 \text{ days}$$
 
-## 4. Delay & Lookahead Mathematical Algorithms
-
-All progress and slippage evaluations strictly adhere to the rules established in `HANDOFF_REPORT.md` and project quality standards.
-
-### 4.1 Reference Tracking Date Hierarchy
-For any engineering document and review gate ($g \in \{\text{IFR}, \text{IFA}, \text{AFC}\}$):
-$$\text{RefDate}_g = \begin{cases} \text{ForecastDate}_g & \text{if } \text{ForecastDate}_g \text{ exists and is a valid date} \\ \text{PlanDate}_g & \text{otherwise (fallback)} \end{cases}$$
-
-### 4.2 Universal Anchor
-Every evaluation compares exact date deltas against:
-$$\text{Anchor Date} = \text{TODAY} \quad (\text{e.g., } \texttt{datetime.date.today()})$$
-
-### 4.3 Two-Pronged Delay Classification (`REQ-03` & `REQ-04`)
-A document gate is classified as **Delayed** under two distinct mathematical criteria:
-
-#### 1. Type 3.1 Delay (Submitted Late)
-* **Condition:** The actual submission occurred after the baseline forecast date.
-  $$\text{ActualDate}_g \neq \text{None} \quad \land \quad \text{ActualDate}_g > \text{RefDate}_g$$
-* **Calculation:**
-  $$\text{Delay Days} = \max((\text{ActualDate}_g - \text{RefDate}_g).\text{days}, 1)$$
-* **UI Indicator:** 🟠 Orange Badge (`Type 3.1: Submitted Late`)
-
-#### 2. Type 3.2 Delay (Not Submitted & Overdue)
-* **Condition:** No actual submission date is recorded AND today's date is on or after the forecast date.
-  $$\text{ActualDate}_g == \text{None} \quad \land \quad \text{TODAY} \ge \text{RefDate}_g$$
-* **Calculation:**
-  $$\text{Delay Days} = \max((\text{TODAY} - \text{RefDate}_g).\text{days}, 1)$$
-* **UI Indicator:** 🔴 Red Badge (`Type 3.2: Overdue & Not Submitted`)
-
-### 4.4 14-Day Lookahead Warning & Slippage (`REQ-05`)
-* **Condition:** Document has not yet been submitted (`ActualDate == None`), and the forecast due date falls within the upcoming two weeks:
-  $$\text{TODAY} < \text{RefDate}_g \le \text{TODAY} + 14 \text{ days}$$
-* **Slippage Flag (`⚠️ Slipping`):** A lookahead document is highlighted for slippage if its forecast submission date has slipped beyond its original baseline plan:
-  $$\text{ForecastDate}_g > \text{PlanDate}_g$$
+### 4.2 14-Day Lookahead Warning Rules (`#eab308` Crisp Yellow)
+* Evaluates strictly the **next immediate unsubmitted milestone gate**.
+* If document is already fully approved (`COMPLETE`), lookahead is bypassed.
+* Triggers when:
+  $$\text{TODAY} < \text{Reference Date} \le \text{TODAY} + 14 \text{ days}$$
 
 ---
 
-## 5. Dashboard Sections & Presentation Architecture
+## 5. UI Architecture & Visualization Specifications
 
-To fulfill user requirements, the frontend Single-Page Application (`index.html`, `app.js`, `index.css`) must present data partitioned into **4 distinct work package sections** (plus a unified Executive Summary):
+### 5.1 Dedicated Status Summary Boxes (Between Row 1 & Row 2)
+Positioned directly in between **Row 1** (Deliverables & Delay Breaches) and **Row 2** (Plan, Actual, Forecast Progress & SPI):
+1. **PENDING FINAL APPROVAL Box (`#8b5cf6` Purple):**
+   * Primary metric: Total documents pending client approval (`137 Docs` in Executive).
+   * Category breakdown format: **`ENG XX / TBE XX / MR XX`**
+2. **COMPLETE Box (`#10b981` Emerald):**
+   * Primary metric: Total documents with closed 100% final approval gates (`153 Docs (10.3%)` in Executive).
+   * Category breakdown format: **`ENG XX (YY%) / TBE XX (YY%) / MR XX (YY%)`** where `YY%` is `% complete of each type of document`.
 
-```
-+-----------------------------------------------------------------------------------+
-| EXECUTIVE HEADER: Global Progress KPIs | 📁 Weekly Cut-off Upload | Filter Bar   |
-+-----------------------------------------------------------------------------------+
-| SECTION TABS:                                                                     |
-| [ 🏢 Executive Overview ] [ 🛠️ WP-1 Topside Excl. ] [ 🏗️ WP-1 Topside Structure ] |
-| [ ⚓ WP-1 Jacket ]          [ 🛢️ WP-2 Pipeline ]                                     |
-+-----------------------------------------------------------------------------------+
-| ACTIVE SECTION CONTENT:                                                           |
-| +-------------------------------------------------------------------------------+ |
-| | KPI Summary Cards:                                                            | |
-| | (Total Docs) | (Total Delayed) | (Type 3.1 Late) | (Type 3.2 Overdue) | (Lookahead)| |
-| +-------------------------------------------------------------------------------+ |
-| +-----------------------------------------------+ +-----------------------------+ |
-| | Discipline Progress & Status Stacked Chart    | | SPI / S-Curve Progress Chart| |
-| +-----------------------------------------------+ +-----------------------------+ |
-| +-------------------------------------------------------------------------------+ |
-| | Sub-Tabs for Active Section:                                                  | |
-| | [ 📋 Master Register ] [ 🚨 Overdue & Delayed (Type 3.1 & 3.2) ] [ ⚠️ Lookahead ] | |
-| +-------------------------------------------------------------------------------+ |
-| | Interactive Filterable & Searchable Data Table with Status Chips & Badges    | |
-| +-------------------------------------------------------------------------------+ |
-+-----------------------------------------------------------------------------------+
-```
+### 5.2 Discipline Stacked Bar Chart (`Chart 1`)
+Displays deliverable counts stacked by status across disciplines:
+* **COMPLETE:** `#10b981` (Emerald Green)
+* **PENDING FINAL APPROVAL:** `#8b5cf6` (Royal Purple)
+* **IFA Submitted:** `#0284c7` (Sky Blue)
+* **IFR Submitted:** `#06b6d4` (Cyan)
+* **Not Yet Submitted:** `#64748b` (Slate Grey)
 
-### 5.1 Section Breakdown
-1. **Executive Overview Tab:** Aggregates statistics, overall S-Curves, and high-level delay risks across all 4 work packages simultaneously.
-2. **WP-1 Topside Excl. Structure Tab:** Focuses purely on data extracted from `00210 EDSR as of WE 27 03 Jul 26.xlsm` (or newly uploaded weekly updates for Topside Excl).
-3. **WP-1 Topside Structure Tab:** Focuses purely on data extracted from `Z1F Topsides EDSR cut-off_3Jul26.xlsx` (or newly uploaded weekly updates for Topside Structure).
-4. **WP-1 Jacket Tab:** Focuses purely on data extracted from `Z1F Jacket EDSR cut-off_3Jul26.xlsx` (or newly uploaded weekly updates for Jacket).
-5. **WP-2 Pipeline Tab:** Focuses purely on data extracted from `Att.2. WP2 Engineering Progress Measurement_030726_Updated.xlsx` (or newly uploaded weekly updates for Pipeline).
+### 5.3 Delay & Lookahead Grouped Bar Chart (`Chart 2`)
+Displays unique document counts affected by:
+* **Type 3.1 Late Documents:** `#b45309` (Warm Copper)
+* **Type 3.2 Overdue Documents:** `#ef4444` (Red)
+* **14-Day Lookahead Risk Documents:** `#eab308` (Yellow)
 
-### 5.2 Interactive Sub-Views within Each Section
-Each of the 4 work package tabs features three localized sub-tables:
-* **Master Document Register (`MDR`):** Complete deliverable inventory showing Document Number, Title, Discipline, Lifecycle Status (`Not Yet Submitted`, `IFR`, `IFA`, `AFC`), and all Plan/Forecast/Actual dates.
-* **Overdue & Delayed Deliverables (`Delay Tab`):** Strictly filters down to documents triggering **Type 3.1 (Submitted Late)** or **Type 3.2 (Overdue & Not Submitted)** delay rules. Displays exact `Delay Days` and aging badges (`Critical > 30 days`, `High 15-30 days`, `Medium 7-14 days`, `Low < 7 days`).
-* **14-Day Lookahead Warning (`Lookahead Tab`):** Displays documents due in the next 14 days, highlighting `Days Remaining` and explicitly flagging `⚠️ Slipping from Plan` when $\text{Forecast} > \text{Plan}$.
+### 5.3 Filter Bar Dropdowns
+* **Gate Milestone:** `All`, `IFR`, `IFA`, `AFC Sub`, `AFC App`
+* **Document / Breach Status:** `All`, `COMPLETE`, `PENDING FINAL APPROVAL`, `IFA Submitted`, `IFR Submitted`, `Not Yet Submitted`, `On-Time`, `Delayed`, `Type 3.1`, `Type 3.2`, `Critical Aging`, `14-Day Lookahead`
 
 ---
 
-## 6. UI/UX Design Standards & Aesthetics
+## 6. Verification and Audit Metrics (14-Aug Cut-off)
 
-* **Visual Theme:** Premium dark glassmorphism (`#030712` base background, semi-transparent backdrop-blur card containers with subtle borders `#1e293b`).
-* **Color Palette:**
-  * **Brand Primary:** `--accent-cyan` (`#06b6d4` / `#22d3ee`) for headers and primary highlights.
-  * **Success / Submitted:** `--accent-emerald` (`#10b981`) for completed milestones and Type 3.1 low severity.
-  * **Warning / Lookahead:** `--accent-amber` (`#f59e0b`) for lookahead due dates and Type 3.1 late submissions.
-  * **Alert / Overdue:** `--accent-rose` (`#f43f5e`) for Type 3.2 overdue documents and critical delays.
-* **Responsive Interactions:** Client-side instant filtering without page reloads, Chart.js interactive tooltips with drill-down highlights, and clean typography using Outfit/Inter fonts.
-
----
-
-## 7. Verification & Acceptance Criteria
-
-1. **Multi-Source Accuracy:** Running `python server.py` must successfully load all 4 Excel files without errors and return normalized JSON datasets for each section (`topside_excl`, `topside_structure`, `jacket`, `wp2_pipeline`).
-2. **Weekly Upload Functionality:** Uploading a newly named Excel cut-off via the dashboard modal must properly auto-detect its Work Package, update `server.py` in-memory cache immediately, and re-render the dashboard cleanly.
-3. **Delay Classification Compliance:**
-   * Every document classified as Type 3.1 must have a non-empty Actual Date greater than Forecast Date.
-   * Every document classified as Type 3.2 must have an empty Actual Date and a Forecast Date $\le$ `TODAY`.
-4. **UI Functionality:** Clicking between the 4 work package tabs (`Topside Excl. Structure`, `Topside Structure`, `Jacket`, `Pipeline`) must instantly switch summary KPIs, charts, and table contents to reflect only that specific work package's progress.
-
----
-
-## 8. Dual-Basis Reporting Methodology (Gates vs. MDR Document Baseline)
-
-To ensure comprehensive engineering transparency and prevent any ambiguity regarding deliverable totals versus gate review volumes, all KPI cards across all Work Package views display **two distinct metrics side-by-side within the exact same KPI box**:
-
-1. **Gate Milestones (`Gates - 3 Revs Basis`)**:
-   * Measures individual review gate events across **IFR (50% Gate)**, **IFA (20% Gate)**, and **AFC (Approval Gate)**.
-   * Because each document passes through up to 3 gates, the total gate scope is up to $3 \times \text{Total MDR Docs}$.
-   * When counting delays (`Total Delayed Gates`, `Type 3.1 Submitted Late`, `Type 3.2 Overdue`), this number tracks how many individual gate submissions breached their Forecast Date or are overdue.
-
-2. **Master Document Register Baseline (`MDR Docs Basis`)**:
-   * Measures unique engineering deliverable rows (`MDR` files) directly matching the baseline inventory count.
-   * When counting delays or status (`Total Delayed Docs Basis`, `Type 3.1 Docs Basis`, `On-Time Docs Basis`), this number represents the exact count of unique deliverable documents (`doc_no`) affected by at least one gate condition.
-   * This guarantees direct comparability against the `Total Deliverables` card without duplicate document counting.
-
----
-
-## 9. Color Coding, Layout Swapping & Multi-Metric Visual Refinements
-
-To optimize visual hierarchy and executive scannability across all dashboard elements:
-
-1. **Total Deliverables Card Layout**:
-   * The dual-metric layout places **Max Gates (3 Revs)** (`kpiTotalGates`) on the left-hand column (`kpi-value`) and **MDR Rows (Docs)** (`kpiTotalDocs`) on the right-hand column (`kpi-value-secondary`).
-
-2. **Strict Breach Color Standards**:
-   * **Type 3.1: Submitted Late (`#b45309` Warm Copper/Brown):** Distinguishes documents submitted after Forecast Date (`Actual > Forecast`) with dedicated golden-brown `.alert-brown` and `.alert-bg-brown` badges.
-   * **Type 3.2: Overdue (`#ef4444` Vibrant Red):** Distinguishes critical unsubmitted review gates (`Actual is empty & TODAY ≥ Forecast`) with crisp `.alert-rose` / `.alert-red` highlights.
-   * **14-Day Lookahead Risk (`#eab308` Crisp Yellow - Latest Unsubmitted Revision Basis):** Evaluates strictly the **latest/next unsubmitted revision right now** (`the sequential gate where Actual Date is empty: IFR -> IFA -> AFC`). A document appears in the 14-day lookahead warning list if and only if its latest unsubmitted revision is due within the upcoming 14-day window (`TODAY < Forecast <= TODAY + 14 days`). Fully submitted documents (`AFC Submitted`) or future revisions beyond the immediate pending gate are never flagged.
-
-3. **Combined Delay & Lookahead Charting (Unique MDR Documents Basis)**:
-   * The second chart (`Delay Severity, Overdue & 14-Day Lookahead Risk by Discipline`) strictly plots quantities on **MDR unique document basis (`NOT base on 3 revisions`)**, displaying a 3-bar grouped comparison per discipline showing how many unique documents (`doc_no`) are affected:
-     * Bar 1: Type 3.1 Late Documents (`#b45309` Brown)
-     * Bar 2: Type 3.2 Overdue Documents (`#ef4444` Red)
-     * Bar 3: 14-Day Lookahead Risk Documents (`#eab308` Yellow)
-
-4. **Sub-Tab Pill Badges (Unique MDR Documents Basis)**:
-   * To maintain consistent comparison against the baseline Master Document Register (`MDR`), all sub-tab pill badges (`subCountDelay3_1`, `subCountDelay3_2`, and `subCountLookahead`) strictly display the **unique MDR document quantity (`MDR Docs Basis`)** rather than total review gate milestones:
-     * **Brown Pill (`3.1: X`)**: Unique MDR documents (`doc_no`) with Type 3.1 late submissions.
-     * **Red Pill (`3.2: Y`)**: Unique MDR documents (`doc_no`) with Type 3.2 overdue breaches.
-     * **Yellow Lookahead Pill (`[Z]`)**: Unique MDR documents (`doc_no`) due within the 14-day lookahead window.
-
----
-
-## 10. Lessons Learned, Operational Handoff & Cloud Deployment Guide
-
-### 10.1 Key Engineering Lessons Learned (`Lessons Learned`)
-1. **Unique MDR Documents Basis vs. Total Revisions/Gates Scope**:
-   * *Lesson:* When presenting high-level charts (`Chart 1: Discipline Progress` and `Chart 2: Delay Severity & Lookahead Risk`) or summary pill badges to Executive Project Managers, counts must strictly align with the unique **Master Document Register (`MDR`) baseline inventory (`1,461 documents`)** rather than total review gate scopes (`3 Revisions x 1,461 = 4,383 gates`).
-   * *Impact:* Counting on a 3-revision basis skewed visual quantities (causing disciplines like Drawing to show 1,400+ delayed gates on a 460-document inventory). Standardizing both charts and pill badges to unique `doc_no` counts provides instant, verifiable audit alignment.
-
-2. **Sequential Gate Evaluation for 14-Day Lookahead (`Latest Unsubmitted Revision Basis`)**:
-   * *Lesson:* Engineering progress tracking is strictly sequential (`IFR -> IFA -> AFC`). A document cannot be evaluated for future `IFA` or `AFC` lookahead risks if `IFR` has not even been submitted yet.
-   * *Impact:* The lookahead evaluation engine (`compute_delay_and_lookahead`) must first identify the **single latest pending revision (`the sequential gate where Actual Date is empty`)**. Only if that specific pending revision's `Reference Date` (`Forecast Date over Plan Date`) falls due within `TODAY < Forecast <= TODAY + 14 days` does the document trigger a lookahead warning. Fully submitted documents (`AFC Submitted`) are 100% excluded.
-
-3. **Reference Date Hierarchy (`Forecast Date` over `Plan Date`)**:
-   * *Lesson:* Contractor execution schedules constantly evolve via weekly re-forecasting (`*Cut off*.xlsx`). Evaluating delays against static `Plan Date` alone causes false alarms on mutually agreed re-forecasts.
-   * *Impact:* The backend dynamically enforces $\text{Reference Date} = \text{Forecast Date if present, else Plan Date}$, ensuring that delay days and lookahead remaining days accurately reflect active contractor commitments.
-
----
-
-### 10.2 Operational Handoff Summary
-* **Master Spreadsheets Preservation:** All original Work Package Excel cut-off files (`00210 EDSR...xlsm`, `Att.2. WP2...xlsx`, `Z1F Topsides EDSR...xlsx`, `Z1F Jacket EDSR...xlsx`) are kept intact in the project workspace as the single source of truth (`Keep master file`).
-* **Performance Optimization:** The Python backend (`server.py`) uses a thread-safe `_cache_lock` with multi-file openpyxl streaming, ingesting all 1,461 MDR records across 4 work packages in `<9 seconds` and serving instant API responses (`304 Not Modified` / `200 OK` in `<50ms`).
-* **Self-Contained Architecture:** Zero external cloud database setup required; the system operates directly on standard file systems and works immediately out of the box.
-
----
-
-### 10.3 Git Repository Preparation & Render Cloud Deployment (`Git & Render Guide`)
-
-#### A. Prepared Deployment Configuration Files
-1. **`requirements.txt`**: Specifies strict Python dependencies:
-   ```text
-   openpyxl>=3.1.0
-   ```
-2. **`.gitignore`**: Excludes Python bytecode and OS caches while explicitly **preserving all master Excel spreadsheets (`*.xlsx`, `*.xlsm`)** inside the repository so cloud servers can ingest data immediately:
-   ```text
-   __pycache__/
-   *.py[cod]
-   venv/
-   .env
-   .DS_Store
-   Thumbs.db
-   ```
-3. **`render.yaml` (Render Blueprint Spec)**: Enables automated 1-click Web Service creation on Render.com:
-   ```yaml
-   services:
-     - type: web
-       name: z1f-engineering-progress-dashboard
-       env: python
-       buildCommand: pip install -r requirements.txt
-       startCommand: python server.py
-       plan: free
-       envVars:
-         - key: PORT
-           value: 8090
-         - key: PYTHONUNBUFFERED
-           value: true
-   ```
-4. **`Procfile`**: Provides cross-platform compatibility for Render, Heroku, Railway, and Fly.io:
-   ```text
-   web: python server.py
-   ```
-
-#### B. Step-by-Step Git Upload Instructions
-Open terminal inside the workspace root (`c:\Users\pipes\OneDrive\Documents\Google_AntiGravity\Project\Engineering_Progress_Z1F`) and execute:
-```powershell
-# 1. Initialize Git repository (if not already initialized)
-git init
-
-# 2. Stage all code, configuration files, and master spreadsheets
-git add .
-
-# 3. Commit the production-ready build
-git commit -m "feat: Z1F Engineering Progress Dashboard — Final Production Build with MDR Basis Charting & Sequential Lookahead Engine"
-
-# 4. Connect to your GitHub repository and push
-git branch -M main
-git remote add origin https://github.com/<YOUR_USERNAME>/<YOUR_REPOSITORY_NAME>.git
-git push -u origin main
-```
-
-#### C. Step-by-Step Render Cloud Deployment Instructions (`Render.com`)
-1. Log in to [Render.com](https://render.com) using your GitHub account.
-2. Click **New +** $\rightarrow$ **Blueprint** (or **Web Service**).
-3. Select your newly pushed GitHub repository (`Engineering_Progress_Z1F`).
-4. If using **Blueprint**, Render will automatically detect `render.yaml` and configure the service (`Build: pip install -r requirements.txt`, `Start: python server.py`, `Port: 8090`).
-5. Click **Apply Blueprint** (or **Create Web Service**).
-6. Within `60 seconds`, Render will build the environment, run `python server.py`, ingest all 4 master Work Package Excel sheets on startup, and provide your live production URL (e.g., `https://z1f-engineering-progress-dashboard.onrender.com`)!
-
+| Work Package | Deliverables | Official Plan % | Official Actual % | SPI | Status Summary |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **WP-1 Topside Excl. Structure** | 458 | 48.95% | 58.19% | 1.19 | Complete: 63, Pending App: 71, IFA: 73, IFR: 149, Not Sub: 102 |
+| **WP-1 Topside Structure** | 237 | 67.56% | 67.21% | 0.99 | Complete: 36, Pending App: 11, IFA: 102, IFR: 51, Not Sub: 37 |
+| **WP-1 Jacket** | 653 | 47.77% | 49.81% | 1.04 | Complete: 48, Pending App: 55, IFA: 212, IFR: 175, Not Sub: 163 |
+| **WP-2 Pipeline** | 143 | 35.16% | 34.75% | 0.99 | Complete: 6, Pending App: 0, IFA: 33, IFR: 36, Not Sub: 68 |
+| **Executive Overall Weighted** | **1,491** | **52.68%** | **55.77%** | **1.06** | **Complete: 153, Pending App: 137, IFA: 420, IFR: 411, Not Sub: 370** |

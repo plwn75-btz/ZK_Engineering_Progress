@@ -96,14 +96,29 @@ def find_active_files():
             
     return result
 
-def determine_doc_status(ifr_sub, ifa_sub, afc_sub):
+def determine_doc_status(ifr_sub, ifa_sub, afc_sub, afc_app_sub=None):
+    if afc_app_sub:
+        return "COMPLETE"
     if afc_sub:
-        return "AFC Submitted"
+        return "PENDING FINAL APPROVAL"
     if ifa_sub:
         return "IFA Submitted"
     if ifr_sub:
         return "IFR Submitted"
     return "Not Yet Submitted"
+
+def classify_doc_type(doc_no, title=""):
+    d_no = (doc_no or "").upper()
+    t = (title or "").upper()
+    
+    # 1. TBE (Technical Bid Evaluation)
+    if "-TBE-" in d_no or d_no.startswith("TBE") or "TECHNICAL BID EVALUATION" in t or "TBE " in t or " TBE" in t:
+        return "TBE"
+    # 2. MR (Material Requisition)
+    if "-MR-" in d_no or "-REQ-" in d_no or d_no.startswith("MR-") or "MATERIAL REQUISITION" in t or "MATERIAL REQUISITION" in d_no:
+        return "MR"
+    # 3. ENG (All other engineering drawings, calculations, reports, specs, BOD, etc.)
+    return "ENG"
 
 def extract_topside_excl(filepath):
     if not filepath or not os.path.exists(filepath):
@@ -131,8 +146,11 @@ def extract_topside_excl(filepath):
                 "doc_no": del_id,
                 "title": title,
                 "discipline": discipline,
+                "doc_type": classify_doc_type(del_id, title),
                 "ifr_plan": None, "ifr_forecast": None, "ifr_submit_date": None,
                 "ifa_plan": None, "ifa_forecast": None, "ifa_submit_date": None,
+                "afc_sub_plan": None, "afc_sub_forecast": None, "afc_sub_date": None,
+                "afc_app_plan": None, "afc_app_forecast": None, "afc_app_date": None,
                 "afc_plan": None, "afc_forecast": None, "afc_submit_date": None
             }
             
@@ -164,15 +182,26 @@ def extract_topside_excl(filepath):
                 entry["ifa_forecast"] = fore_dt
                 entry["ifa_submit_date"] = actual_dt
             elif status_id in ("AFC",):
+                entry["afc_sub_plan"] = plan_dt
+                entry["afc_sub_forecast"] = fore_dt
+                entry["afc_sub_date"] = actual_dt
                 entry["afc_plan"] = plan_dt
                 entry["afc_forecast"] = fore_dt
                 entry["afc_submit_date"] = actual_dt
+            elif status_id in ("AP",):
+                entry["afc_app_plan"] = plan_dt
+                entry["afc_app_forecast"] = fore_dt
+                entry["afc_app_date"] = actual_dt
+                if not entry["afc_submit_date"]:
+                    entry["afc_plan"] = plan_dt
+                    entry["afc_forecast"] = fore_dt
+                    entry["afc_submit_date"] = actual_dt
                 
     wb.close()
     
     docs = []
     for d in del_map.values():
-        d["status"] = determine_doc_status(d["ifr_submit_date"], d["ifa_submit_date"], d["afc_submit_date"])
+        d["status"] = determine_doc_status(d["ifr_submit_date"], d["ifa_submit_date"], d["afc_sub_date"], d["afc_app_date"])
         docs.append(d)
     return {"docs": docs, "filename": os.path.basename(filepath)}
 
@@ -187,40 +216,63 @@ def extract_topside_or_jacket(filepath, default_wp="Jacket"):
     ws = wb["EDSR"]
     docs = []
     empty_count = 0
+    
+    # Topsides has Deliverable Title in Col 4 (idx 3), Jacket has Deliverable Title in Col 3 (idx 2)
+    is_topsides = "topsides" in os.path.basename(filepath).lower() or default_wp == "Topside Structure"
+    doc_idx = 3 if is_topsides else 2
+    title_idx = 4 if is_topsides else 3
+    disc_idx = 1
+    
+    ifr_offset = 10 if is_topsides else 9
+    ifa_offset = 13 if is_topsides else 12
+    afc_sub_offset = 16 if is_topsides else 15
+    afc_app_offset = 19 if is_topsides else 18
+
     for row in ws.iter_rows(min_row=4, values_only=True):
-        if not row or len(row) < 4 or not row[3]:
+        if not row or len(row) <= doc_idx or not row[doc_idx]:
             empty_count += 1
             if empty_count > 50:
                 break
             continue
         empty_count = 0
-        doc_no = str(row[3]).strip()
+        doc_no = str(row[doc_idx]).strip()
         if doc_no in ("Total", "Average", "-", ""):
             continue
-        title = str(row[4] or "Untitled Deliverable").strip() if len(row) > 4 else "Untitled Deliverable"
-        discipline = str(row[1] or default_wp).strip() if len(row) > 1 else default_wp
+        title = str(row[title_idx] or "Untitled Deliverable").strip() if len(row) > title_idx else "Untitled Deliverable"
+        discipline = str(row[disc_idx] or default_wp).strip() if len(row) > disc_idx else default_wp
         if discipline in ("GENERIC", "-", ""):
             discipline = default_wp
             
-        ifr_plan = parse_date(row[10]) if len(row) > 10 else None
-        ifr_fore = (parse_date(row[11]) if len(row) > 11 else None) or ifr_plan
-        ifr_sub = parse_date(row[12]) if len(row) > 12 else None
+        ifr_plan = parse_date(row[ifr_offset]) if len(row) > ifr_offset else None
+        ifr_fore = (parse_date(row[ifr_offset + 1]) if len(row) > ifr_offset + 1 else None) or ifr_plan
+        ifr_sub = parse_date(row[ifr_offset + 2]) if len(row) > ifr_offset + 2 else None
         
-        ifa_plan = parse_date(row[13]) if len(row) > 13 else None
-        ifa_fore = (parse_date(row[14]) if len(row) > 14 else None) or ifa_plan
-        ifa_sub = parse_date(row[15]) if len(row) > 15 else None
+        ifa_plan = parse_date(row[ifa_offset]) if len(row) > ifa_offset else None
+        ifa_fore = (parse_date(row[ifa_offset + 1]) if len(row) > ifa_offset + 1 else None) or ifa_plan
+        ifa_sub = parse_date(row[ifa_offset + 2]) if len(row) > ifa_offset + 2 else None
         
-        afc_plan = (parse_date(row[16]) if len(row) > 16 else None) or (parse_date(row[19]) if len(row) > 19 else None)
-        afc_fore = (parse_date(row[17]) if len(row) > 17 else None) or (parse_date(row[20]) if len(row) > 20 else None) or afc_plan
-        afc_sub = (parse_date(row[18]) if len(row) > 18 else None) or (parse_date(row[21]) if len(row) > 21 else None)
+        afc_sub_plan = parse_date(row[afc_sub_offset]) if len(row) > afc_sub_offset else None
+        afc_sub_fore = (parse_date(row[afc_sub_offset + 1]) if len(row) > afc_sub_offset + 1 else None) or afc_sub_plan
+        afc_sub_sub = parse_date(row[afc_sub_offset + 2]) if len(row) > afc_sub_offset + 2 else None
         
-        status = determine_doc_status(ifr_sub, ifa_sub, afc_sub)
+        afc_app_plan = parse_date(row[afc_app_offset]) if len(row) > afc_app_offset else None
+        afc_app_fore = (parse_date(row[afc_app_offset + 1]) if len(row) > afc_app_offset + 1 else None) or afc_app_plan
+        afc_app_sub = parse_date(row[afc_app_offset + 2]) if len(row) > afc_app_offset + 2 else None
+        
+        afc_plan = afc_app_plan or afc_sub_plan
+        afc_fore = afc_app_fore or afc_sub_fore or afc_plan
+        afc_sub = afc_app_sub or afc_sub_sub
+        
+        status = determine_doc_status(ifr_sub, ifa_sub, afc_sub_sub, afc_app_sub)
         docs.append({
             "doc_no": doc_no,
             "title": title,
             "discipline": discipline,
+            "doc_type": classify_doc_type(doc_no, title),
             "ifr_plan": ifr_plan, "ifr_forecast": ifr_fore, "ifr_submit_date": ifr_sub,
             "ifa_plan": ifa_plan, "ifa_forecast": ifa_fore, "ifa_submit_date": ifa_sub,
+            "afc_sub_plan": afc_sub_plan, "afc_sub_forecast": afc_sub_fore, "afc_sub_date": afc_sub_sub,
+            "afc_app_plan": afc_app_plan, "afc_app_forecast": afc_app_fore, "afc_app_date": afc_app_sub,
             "afc_plan": afc_plan, "afc_forecast": afc_fore, "afc_submit_date": afc_sub,
             "status": status
         })
@@ -265,13 +317,17 @@ def extract_wp2_pipeline(filepath):
         afc_sub = parse_date(row[37]) if len(row) > 37 else None
         afc_fore = (parse_date(row[38]) if len(row) > 38 else None) or (parse_date(row[39]) if len(row) > 39 else None) or afc_plan
         
-        status = determine_doc_status(ifr_sub, ifa_sub, afc_sub)
+        # Pipeline AFC is final revision -> COMPLETE when submitted
+        status = determine_doc_status(ifr_sub, ifa_sub, None, afc_sub)
         docs.append({
             "doc_no": doc_no,
             "title": title,
             "discipline": discipline,
+            "doc_type": classify_doc_type(doc_no, title),
             "ifr_plan": ifr_plan, "ifr_forecast": ifr_fore, "ifr_submit_date": ifr_sub,
             "ifa_plan": ifa_plan, "ifa_forecast": ifa_fore, "ifa_submit_date": ifa_sub,
+            "afc_sub_plan": None, "afc_sub_forecast": None, "afc_sub_date": None,
+            "afc_app_plan": afc_plan, "afc_app_forecast": afc_fore, "afc_app_date": afc_sub,
             "afc_plan": afc_plan, "afc_forecast": afc_fore, "afc_submit_date": afc_sub,
             "status": status
         })
@@ -290,24 +346,37 @@ def compute_delay_and_lookahead(docs, today):
     
     disc_summary = {}
     
+    type_totals = {"ENG": 0, "TBE": 0, "MR": 0}
+    pending_breakdown = {"ENG": 0, "TBE": 0, "MR": 0}
+    complete_breakdown = {"ENG": 0, "TBE": 0, "MR": 0}
+    
     total_plan_prog = 0.0
     total_fore_prog = 0.0
     total_act_prog = 0.0
     
     for d in docs:
+        dtype = d.get("doc_type") or classify_doc_type(d.get("doc_no"), d.get("title"))
+        type_totals[dtype] = type_totals.get(dtype, 0) + 1
+        
         disc = d["discipline"]
         if disc not in disc_summary:
             disc_summary[disc] = {
                 "total": 0, "delayed": 0, "type3_1": 0, "type3_2": 0,
-                "not_submitted": 0, "ifr_sub": 0, "ifa_sub": 0, "afc_sub": 0,
+                "not_submitted": 0, "ifr_sub": 0, "ifa_sub": 0,
+                "pending_approval": 0, "complete": 0,
                 "lookahead": 0, "act_prog_sum": 0.0, "plan_prog_sum": 0.0, "fore_prog_sum": 0.0
             }
         disc_summary[disc]["total"] += 1
         
         status = d["status"]
-        if status == "AFC Submitted":
-            disc_summary[disc]["afc_sub"] += 1
+        if status == "COMPLETE":
+            disc_summary[disc]["complete"] += 1
+            complete_breakdown[dtype] = complete_breakdown.get(dtype, 0) + 1
             act_prog = 100.0
+        elif status == "PENDING FINAL APPROVAL":
+            disc_summary[disc]["pending_approval"] += 1
+            pending_breakdown[dtype] = pending_breakdown.get(dtype, 0) + 1
+            act_prog = 80.0
         elif status == "IFA Submitted":
             disc_summary[disc]["ifa_sub"] += 1
             act_prog = 70.0
@@ -318,20 +387,29 @@ def compute_delay_and_lookahead(docs, today):
             disc_summary[disc]["not_submitted"] += 1
             act_prog = 0.0
             
-        if d["afc_plan"] is not None and d["afc_plan"] <= today:
+        # Target schedule progress
+        if d.get("afc_app_plan") and d["afc_app_plan"] <= today:
             plan_prog = 100.0
-        elif d["ifa_plan"] is not None and d["ifa_plan"] <= today:
+        elif d.get("afc_sub_plan") and d["afc_sub_plan"] <= today:
+            plan_prog = 80.0
+        elif d.get("afc_plan") and d["afc_plan"] <= today:
+            plan_prog = 100.0
+        elif d.get("ifa_plan") and d["ifa_plan"] <= today:
             plan_prog = 70.0
-        elif d["ifr_plan"] is not None and d["ifr_plan"] <= today:
+        elif d.get("ifr_plan") and d["ifr_plan"] <= today:
             plan_prog = 50.0
         else:
             plan_prog = 0.0
             
-        if d["afc_forecast"] is not None and d["afc_forecast"] <= today:
+        if d.get("afc_app_forecast") and d["afc_app_forecast"] <= today:
             fore_prog = 100.0
-        elif d["ifa_forecast"] is not None and d["ifa_forecast"] <= today:
+        elif d.get("afc_sub_forecast") and d["afc_sub_forecast"] <= today:
+            fore_prog = 80.0
+        elif d.get("afc_forecast") and d["afc_forecast"] <= today:
+            fore_prog = 100.0
+        elif d.get("ifa_forecast") and d["ifa_forecast"] <= today:
             fore_prog = 70.0
-        elif d["ifr_forecast"] is not None and d["ifr_forecast"] <= today:
+        elif d.get("ifr_forecast") and d["ifr_forecast"] <= today:
             fore_prog = 50.0
         else:
             fore_prog = 0.0
@@ -347,12 +425,19 @@ def compute_delay_and_lookahead(docs, today):
         doc_delayed_entries = []
         doc_lookahead_entries = []
         
-        gates = [
-            ("IFR", d["ifr_plan"], d["ifr_forecast"], d["ifr_submit_date"]),
-            ("IFA", d["ifa_plan"], d["ifa_forecast"], d["ifa_submit_date"]),
-            ("AFC", d["afc_plan"], d["afc_forecast"], d["afc_submit_date"])
-        ]
-        
+        # Build active gates list for this document
+        gates = []
+        if d.get("ifr_plan") or d.get("ifr_forecast") or d.get("ifr_submit_date"):
+            gates.append(("IFR", d["ifr_plan"], d["ifr_forecast"], d["ifr_submit_date"]))
+        if d.get("ifa_plan") or d.get("ifa_forecast") or d.get("ifa_submit_date"):
+            gates.append(("IFA", d["ifa_plan"], d["ifa_forecast"], d["ifa_submit_date"]))
+        if d.get("afc_sub_plan") or d.get("afc_sub_forecast") or d.get("afc_sub_date"):
+            gates.append(("AFC Sub (10%)", d["afc_sub_plan"], d["afc_sub_forecast"], d["afc_sub_date"]))
+        elif d.get("afc_plan") or d.get("afc_forecast") or d.get("afc_submit_date"):
+            gates.append(("AFC", d["afc_plan"], d["afc_forecast"], d["afc_submit_date"]))
+        if d.get("afc_app_plan") or d.get("afc_app_forecast") or d.get("afc_app_date"):
+            gates.append(("AFC App (20%)", d["afc_app_plan"], d["afc_app_forecast"], d["afc_app_date"]))
+            
         # Identify the latest revision where actual date is empty (the pending revision)
         latest_pending_gate = next((g for g in gates if g[3] is None), None)
         
@@ -438,8 +523,11 @@ def compute_delay_and_lookahead(docs, today):
         sd = dict(d)
         for k in ("ifr_plan", "ifr_forecast", "ifr_submit_date",
                   "ifa_plan", "ifa_forecast", "ifa_submit_date",
+                  "afc_sub_plan", "afc_sub_forecast", "afc_sub_date",
+                  "afc_app_plan", "afc_app_forecast", "afc_app_date",
                   "afc_plan", "afc_forecast", "afc_submit_date"):
-            sd[k] = format_date(sd[k])
+            if k in sd:
+                sd[k] = format_date(sd[k])
         serialized_docs.append(sd)
         
     total_docs = len(docs)
@@ -455,6 +543,14 @@ def compute_delay_and_lookahead(docs, today):
         dsum["plan_progress_pct"] = round(dsum.get("plan_prog_sum", 0.0) / dtot, 2)
         dsum["forecast_progress_pct"] = round(dsum.get("fore_prog_sum", 0.0) / dtot, 2)
         
+    complete_pct_breakdown = {
+        k: round((complete_breakdown[k] / type_totals[k] * 100), 1) if type_totals.get(k, 0) > 0 else 0.0
+        for k in ("ENG", "TBE", "MR")
+    }
+    total_complete_cnt = sum(complete_breakdown.values())
+    total_pending_cnt = sum(pending_breakdown.values())
+    overall_complete_pct = round(total_complete_cnt / total_docs * 100, 1) if total_docs > 0 else 0.0
+
     return {
         "docs": serialized_docs,
         "delayed_list": delayed_list,
@@ -472,6 +568,13 @@ def compute_delay_and_lookahead(docs, today):
             "lookahead_count": len(lookahead_list),
             "lookahead_docs_count": len(set(d["doc_no"] for d in lookahead_list)),
             "lookahead_slipping_count": lookahead_slipping,
+            "pending_approval_count": total_pending_cnt,
+            "complete_count": total_complete_cnt,
+            "complete_pct": overall_complete_pct,
+            "type_totals": type_totals,
+            "pending_breakdown": pending_breakdown,
+            "complete_breakdown": complete_breakdown,
+            "complete_pct_breakdown": complete_pct_breakdown,
             "plan_progress_pct": plan_progress_pct,
             "forecast_progress_pct": forecast_progress_pct,
             "actual_progress_pct": actual_progress_pct,
@@ -495,19 +598,19 @@ def extract_official_summary_kpis(files):
         wb = openpyxl.load_workbook(fpath, read_only=True, data_only=True)
         if "EDSR Report" in wb.sheetnames:
             ws = wb["EDSR Report"]
-            for row in ws.iter_rows(min_row=2750, max_row=2810, values_only=True):
+            for row in ws.iter_rows(min_row=2750, max_row=2850, values_only=True):
                 if not row or len(row) < 34:
                     continue
                 c1 = str(row[1] or "").strip().lower() if len(row) > 1 else ""
                 c0 = str(row[0] or "").strip().lower() if len(row) > 0 else ""
-                if c1 == "total :" or c0 == "total :" or c1 == "wk1 - work package 1 (greenfield) total :":
+                if c1 == "total :" or c0 == "total :" or "total :" in c1 or "total :" in c0:
                     act_val = row[30] if len(row) > 30 and isinstance(row[30], (int, float)) else 0.0
                     plan_val = row[33] if len(row) > 33 and isinstance(row[33], (int, float)) else 0.0
                     if act_val > 0 or plan_val > 0:
                         metrics["wp1_topside_excl"]["actual"] = round(act_val * 100 if act_val <= 1.5 else act_val, 2)
                         metrics["wp1_topside_excl"]["plan"] = round(plan_val * 100 if plan_val <= 1.5 else plan_val, 2)
                         metrics["wp1_topside_excl"]["forecast"] = metrics["wp1_topside_excl"]["plan"]
-                        metrics["wp1_topside_excl"]["source"] = "EDSR Report Row 2788 Total :"
+                        metrics["wp1_topside_excl"]["source"] = f"EDSR Report Total : ({metrics['wp1_topside_excl']['actual']}%)"
                         if c1 == "total :" or c0 == "total :":
                             break
         wb.close()

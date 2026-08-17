@@ -258,6 +258,36 @@ function renderDashboard() {
     }
     document.getElementById('subCountLookahead').textContent = (kpi.lookahead_docs_count || 0).toLocaleString();
     
+    // Status Boxes: PENDING FINAL APPROVAL and COMPLETE (Between Row 1 & Row 2)
+    const pendingTotal = kpi.pending_approval_count !== undefined ? kpi.pending_approval_count : 0;
+    const pendingEng = (kpi.pending_breakdown && kpi.pending_breakdown.ENG !== undefined) ? kpi.pending_breakdown.ENG : 0;
+    const pendingTbe = (kpi.pending_breakdown && kpi.pending_breakdown.TBE !== undefined) ? kpi.pending_breakdown.TBE : 0;
+    const pendingMr = (kpi.pending_breakdown && kpi.pending_breakdown.MR !== undefined) ? kpi.pending_breakdown.MR : 0;
+    
+    if (document.getElementById('boxPendingApprovalTotal')) {
+        document.getElementById('boxPendingApprovalTotal').textContent = `${pendingTotal.toLocaleString()} Docs`;
+        document.getElementById('boxPendingEng').textContent = pendingEng.toLocaleString();
+        document.getElementById('boxPendingTbe').textContent = pendingTbe.toLocaleString();
+        document.getElementById('boxPendingMr').textContent = pendingMr.toLocaleString();
+    }
+    
+    const compTotal = kpi.complete_count !== undefined ? kpi.complete_count : 0;
+    const compPct = kpi.complete_pct !== undefined ? kpi.complete_pct : (kpi.total_docs > 0 ? (compTotal / kpi.total_docs * 100).toFixed(1) : 0);
+    const compEng = (kpi.complete_breakdown && kpi.complete_breakdown.ENG !== undefined) ? kpi.complete_breakdown.ENG : 0;
+    const compTbe = (kpi.complete_breakdown && kpi.complete_breakdown.TBE !== undefined) ? kpi.complete_breakdown.TBE : 0;
+    const compMr = (kpi.complete_breakdown && kpi.complete_breakdown.MR !== undefined) ? kpi.complete_breakdown.MR : 0;
+    
+    const compEngPct = (kpi.complete_pct_breakdown && kpi.complete_pct_breakdown.ENG !== undefined) ? kpi.complete_pct_breakdown.ENG : 0;
+    const compTbePct = (kpi.complete_pct_breakdown && kpi.complete_pct_breakdown.TBE !== undefined) ? kpi.complete_pct_breakdown.TBE : 0;
+    const compMrPct = (kpi.complete_pct_breakdown && kpi.complete_pct_breakdown.MR !== undefined) ? kpi.complete_pct_breakdown.MR : 0;
+    
+    if (document.getElementById('boxCompleteTotal')) {
+        document.getElementById('boxCompleteTotal').textContent = `${compTotal.toLocaleString()} Docs (${compPct}%)`;
+        document.getElementById('boxCompleteEng').textContent = `${compEng.toLocaleString()} (${compEngPct}%)`;
+        document.getElementById('boxCompleteTbe').textContent = `${compTbe.toLocaleString()} (${compTbePct}%)`;
+        document.getElementById('boxCompleteMr').textContent = `${compMr.toLocaleString()} (${compMrPct}%)`;
+    }
+    
     // Overall Progress & SPI updates
     const planPct = kpi.plan_progress_pct || 0.0;
     const actPct = kpi.actual_progress_pct || 0.0;
@@ -466,11 +496,11 @@ function renderCharts() {
     const disciplines = Object.keys(discMap).sort();
     
     // Prepare Stacked Bar Chart data
-    const afcCounts = disciplines.map(d => discMap[d].afc_sub);
-    const ifaCounts = disciplines.map(d => discMap[d].ifa_sub);
-    const ifrCounts = disciplines.map(d => discMap[d].ifr_sub);
-    const notSubCounts = disciplines.map(d => discMap[d].not_submitted);
-    const delayedCounts = disciplines.map(d => discMap[d].delayed);
+    const completeCounts = disciplines.map(d => discMap[d].complete || 0);
+    const pendingApprovalCounts = disciplines.map(d => discMap[d].pending_approval || 0);
+    const ifaCounts = disciplines.map(d => discMap[d].ifa_sub || 0);
+    const ifrCounts = disciplines.map(d => discMap[d].ifr_sub || 0);
+    const notSubCounts = disciplines.map(d => discMap[d].not_submitted || 0);
     
     // 1. Progress Chart
     const ctxProg = document.getElementById('progressChart').getContext('2d');
@@ -480,9 +510,10 @@ function renderCharts() {
         data: {
             labels: disciplines.map(d => d.length > 18 ? d.substring(0, 18) + '...' : d),
             datasets: [
-                { label: 'AFC Submitted', data: afcCounts, backgroundColor: '#10b981', stack: 'Stack 0' },
-                { label: 'IFA Submitted', data: ifaCounts, backgroundColor: '#06b6d4', stack: 'Stack 0' },
-                { label: 'IFR Submitted', data: ifrCounts, backgroundColor: '#3b82f6', stack: 'Stack 0' },
+                { label: 'COMPLETE', data: completeCounts, backgroundColor: '#10b981', stack: 'Stack 0' },
+                { label: 'PENDING FINAL APPROVAL', data: pendingApprovalCounts, backgroundColor: '#8b5cf6', stack: 'Stack 0' },
+                { label: 'IFA Submitted', data: ifaCounts, backgroundColor: '#0284c7', stack: 'Stack 0' },
+                { label: 'IFR Submitted', data: ifrCounts, backgroundColor: '#06b6d4', stack: 'Stack 0' },
                 { label: 'Not Yet Submitted', data: notSubCounts, backgroundColor: '#64748b', stack: 'Stack 0' }
             ]
         },
@@ -558,11 +589,26 @@ function renderMdrTable(docs, wrapper, searchVal, discVal, statusVal, delayedLis
 
     let filtered = docs.filter(d => {
         if (discVal !== 'ALL' && d.discipline !== discVal) return false;
-        if (searchVal && !(`${d.doc_no} ${d.title} ${d.discipline}`.toLowerCase().includes(searchVal))) return false;
+        if (searchVal && !(`${d.doc_no} ${d.title} ${d.discipline} ${d.status}`.toLowerCase().includes(searchVal))) return false;
         if (milestoneVal !== 'ALL') {
-            const hasGateEntry = d.status.includes(milestoneVal) || delayedList.some(x => x.doc_no === d.doc_no && x.milestone.includes(milestoneVal)) || lookaheadList.some(x => x.doc_no === d.doc_no && x.milestone.includes(milestoneVal)) || (d[`${milestoneVal.toLowerCase()}_plan`] && d[`${milestoneVal.toLowerCase()}_plan`] !== '-');
+            const cleanMs = milestoneVal.toLowerCase();
+            const hasGateEntry = (
+                (d.status && d.status.toLowerCase().includes(cleanMs)) ||
+                delayedList.some(x => x.doc_no === d.doc_no && x.milestone.toLowerCase().includes(cleanMs)) ||
+                lookaheadList.some(x => x.doc_no === d.doc_no && x.milestone.toLowerCase().includes(cleanMs)) ||
+                (cleanMs.includes('ifr') && d.ifr_plan && d.ifr_plan !== '-') ||
+                (cleanMs.includes('ifa') && d.ifa_plan && d.ifa_plan !== '-') ||
+                (cleanMs.includes('afc sub') && d.afc_sub_plan && d.afc_sub_plan !== '-') ||
+                (cleanMs.includes('afc app') && d.afc_app_plan && d.afc_app_plan !== '-') ||
+                (cleanMs === 'afc' && d.afc_plan && d.afc_plan !== '-')
+            );
             if (!hasGateEntry) return false;
         }
+        if (statusVal === 'COMPLETE' && d.status !== 'COMPLETE') return false;
+        if (statusVal === 'PENDING_APPROVAL' && d.status !== 'PENDING FINAL APPROVAL') return false;
+        if (statusVal === 'IFA_SUB' && d.status !== 'IFA Submitted') return false;
+        if (statusVal === 'IFR_SUB' && d.status !== 'IFR Submitted') return false;
+        if (statusVal === 'NOT_SUB' && d.status !== 'Not Yet Submitted') return false;
         if (statusVal === 'ON_TIME' && delayedDocNos.has(d.doc_no)) return false;
         if (statusVal === 'DELAYED' && !delayedDocNos.has(d.doc_no)) return false;
         if (statusVal === 'TYPE3_1' && !type3_1DocNos.has(d.doc_no)) return false;
@@ -591,9 +637,10 @@ function renderMdrTable(docs, wrapper, searchVal, discVal, statusVal, delayedLis
                     <th>IFA Plan</th>
                     <th>IFA Forecast</th>
                     <th>IFA Actual</th>
-                    <th>AFC Plan</th>
-                    <th>AFC Forecast</th>
-                    <th>AFC Actual</th>
+                    <th>AFC Sub (10%)</th>
+                    <th>AFC Sub Act</th>
+                    <th>AFC App (20%)</th>
+                    <th>AFC App Act (AP)</th>
                 </tr>
             </thead>
             <tbody>
@@ -603,25 +650,42 @@ function renderMdrTable(docs, wrapper, searchVal, discVal, statusVal, delayedLis
     const displayDocs = filtered.slice(0, 250);
     displayDocs.forEach(d => {
         let badgeClass = 'badge-not-sub';
-        if (d.status.includes('AFC')) badgeClass = 'badge-submitted';
-        else if (d.status.includes('IFA')) badgeClass = 'badge-submitted';
-        else if (d.status.includes('IFR')) badgeClass = 'badge-submitted';
+        let statusIcon = '';
+        if (d.status === 'COMPLETE') {
+            badgeClass = 'badge-complete';
+            statusIcon = '✅ ';
+        } else if (d.status === 'PENDING FINAL APPROVAL') {
+            badgeClass = 'badge-pending-approval';
+            statusIcon = '⏳ ';
+        } else if (d.status === 'IFA Submitted') {
+            badgeClass = 'badge-ifa-sub';
+            statusIcon = '🔵 ';
+        } else if (d.status === 'IFR Submitted') {
+            badgeClass = 'badge-ifr-sub';
+            statusIcon = '🔷 ';
+        }
+        
+        const afcSubDate = d.afc_sub_date || d.afc_submit_date || '-';
+        const afcSubPlan = d.afc_sub_plan || d.afc_plan || '-';
+        const afcAppDate = d.afc_app_date || (d.status === 'COMPLETE' ? d.afc_submit_date : '-');
+        const afcAppPlan = d.afc_app_plan || d.afc_plan || '-';
         
         html += `
             <tr>
                 <td class="doc-no-cell">${d.doc_no}</td>
                 <td class="doc-title-cell" title="${d.title}">${d.title}</td>
                 <td><span class="chart-tag">${d.discipline}</span></td>
-                <td><span class="badge-status ${badgeClass}">${d.status}</span></td>
-                <td>${d.ifr_plan}</td>
-                <td>${d.ifr_forecast}</td>
-                <td style="color: ${d.ifr_submit_date !== '-' ? 'var(--accent-emerald)' : ''}">${d.ifr_submit_date}</td>
-                <td>${d.ifa_plan}</td>
-                <td>${d.ifa_forecast}</td>
-                <td style="color: ${d.ifa_submit_date !== '-' ? 'var(--accent-emerald)' : ''}">${d.ifa_submit_date}</td>
-                <td>${d.afc_plan}</td>
-                <td>${d.afc_forecast}</td>
-                <td style="color: ${d.afc_submit_date !== '-' ? 'var(--accent-emerald)' : ''}">${d.afc_submit_date}</td>
+                <td><span class="badge-status ${badgeClass}">${statusIcon}${d.status}</span></td>
+                <td>${d.ifr_plan || '-'}</td>
+                <td>${d.ifr_forecast || '-'}</td>
+                <td style="color: ${d.ifr_submit_date !== '-' && d.ifr_submit_date ? 'var(--accent-emerald)' : ''}">${d.ifr_submit_date || '-'}</td>
+                <td>${d.ifa_plan || '-'}</td>
+                <td>${d.ifa_forecast || '-'}</td>
+                <td style="color: ${d.ifa_submit_date !== '-' && d.ifa_submit_date ? 'var(--accent-emerald)' : ''}">${d.ifa_submit_date || '-'}</td>
+                <td>${afcSubPlan}</td>
+                <td style="color: ${afcSubDate !== '-' && afcSubDate ? 'var(--accent-emerald)' : ''}">${afcSubDate}</td>
+                <td>${afcAppPlan}</td>
+                <td style="color: ${afcAppDate !== '-' && afcAppDate ? 'var(--accent-emerald)' : ''}; font-weight: ${afcAppDate !== '-' ? '700' : 'normal'}">${afcAppDate}</td>
             </tr>
         `;
     });

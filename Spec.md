@@ -170,3 +170,13 @@ Displays unique document counts affected by:
 | **WP-1 Jacket** | 653 | 47.77% | 49.81% | 1.04 | Complete: 48, Pending App: 55, IFA: 212, IFR: 175, Not Sub: 163 |
 | **WP-2 Pipeline** | 143 | 35.16% | 34.75% | 0.99 | Complete: 6, Pending App: 0, IFA: 33, IFR: 36, Not Sub: 68 |
 | **Executive Overall Weighted** | **1,491** | **52.68%** | **55.77%** | **1.06** | **Complete: 153, Pending App: 137, IFA: 420, IFR: 411, Not Sub: 370** |
+
+---
+
+## 7. Parking Lot & Future Specification Enhancements
+
+### PL-01: Contractual Fixed Weighting Model
+* **Status:** Pending User Input (Weights to be provided by user).
+* **Reference Document:** [`PARKING_LOT.md`](file:///c:/Users/pipes/OneDrive/Documents/Google_AntiGravity/Project/Engineering_Progress_Z1F/PARKING_LOT.md)
+* **Scope:** Replace dynamic deliverable scope-weighted average ($W_i = N_i / N_{\text{total}}$) with fixed contractual weight fractions ($W_1, W_2, W_3, W_4$) for executive summary aggregation (`Plan %`, `Forecast %`, `Actual %`, `SPI`) and add a dedicated "Contract Weight %" column in the Executive Summary table.
+

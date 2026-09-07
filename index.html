@@ -430,6 +430,36 @@
                     <span class="sub-badge alert-bg-yellow" id="subCountLookahead" title="14-Day Lookahead Warnings (Unique MDR Documents)">0</span>
                 </button>
             </div>
+            <!-- Table Action & Pagination Toolbar -->
+            <div class="table-toolbar">
+                <div class="table-toolbar-left">
+                    <button class="btn btn-sm btn-outline" id="toggleColFiltersBtn" title="Toggle inline column filters">
+                        <span id="toggleColFiltersIcon">🔍</span>
+                        <span id="toggleColFiltersText">Column Filters</span>
+                    </button>
+                    <button class="btn btn-sm btn-outline btn-clear-sort" id="clearSortFilterBtn" style="display: none;" title="Reset all sorting and column filters">
+                        <span>↺ Reset Sort & Filters</span>
+                    </button>
+                    <span class="table-sort-indicator-badge" id="activeSortBadge" style="display: none;"></span>
+                </div>
+                <div class="table-toolbar-right">
+                    <span class="table-rows-info" id="tableRowsInfo">Showing 1-100 of 1,491</span>
+                    <div class="table-page-size-control">
+                        <label for="pageSizeSelect">Show:</label>
+                        <select id="pageSizeSelect" class="table-select-sm">
+                            <option value="50">50</option>
+                            <option value="100" selected>100</option>
+                            <option value="250">250</option>
+                            <option value="ALL">All</option>
+                        </select>
+                    </div>
+                    <div class="table-pagination-nav">
+                        <button class="btn btn-sm btn-nav" id="prevPageBtn" disabled title="Previous page">◀</button>
+                        <span class="page-indicator" id="pageIndicator">Page 1 of 15</span>
+                        <button class="btn btn-sm btn-nav" id="nextPageBtn" title="Next page">▶</button>
+                    </div>
+                </div>
+            </div>
             <div class="table-responsive-wrapper" id="dataTableWrapper">
                 <!-- Table will be rendered dynamically by app.js -->
                 <div class="loading-spinner">Loading engineering deliverables...</div>

@@ -3,6 +3,26 @@ let DASHBOARD_DATA = null;
 let ACTIVE_WP = 'executive';
 let ACTIVE_SUB = 'mdr';
 
+// Sorting & Column Filtering State
+let TABLE_SORT = {
+    mdr: { column: null, direction: 'asc' },
+    delay: { column: null, direction: 'asc' },
+    lookahead: { column: null, direction: 'asc' }
+};
+
+let COLUMN_FILTERS = {
+    mdr: { doc_no: '', title: '', discipline: 'ALL', status: 'ALL' },
+    delay: {},
+    lookahead: { doc_no: '', title: '', discipline: 'ALL', milestone: 'ALL', days_remaining: 'ALL', slipping: 'ALL' }
+};
+
+let SHOW_COL_FILTERS = true;
+let PAGINATION = {
+    mdr: { page: 1, pageSize: 100 },
+    delay: { page: 1, pageSize: 100 },
+    lookahead: { page: 1, pageSize: 100 }
+};
+
 // Chart instances
 let progressChartInstance = null;
 let delayChartInstance = null;
@@ -70,8 +90,14 @@ function setupEventListeners() {
     ['searchInput', 'disciplineSelect', 'milestoneSelect', 'statusSelect'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            el.addEventListener('input', () => renderTable());
-            el.addEventListener('change', () => renderTable());
+            el.addEventListener('input', () => {
+                PAGINATION[ACTIVE_SUB].page = 1;
+                renderTable();
+            });
+            el.addEventListener('change', () => {
+                PAGINATION[ACTIVE_SUB].page = 1;
+                renderTable();
+            });
         }
     });
 
@@ -80,8 +106,59 @@ function setupEventListeners() {
         document.getElementById('disciplineSelect').value = 'ALL';
         document.getElementById('milestoneSelect').value = 'ALL';
         document.getElementById('statusSelect').value = 'ALL';
+        COLUMN_FILTERS[ACTIVE_SUB] = {};
+        TABLE_SORT[ACTIVE_SUB] = { column: null, direction: 'asc' };
+        PAGINATION[ACTIVE_SUB].page = 1;
         renderTable();
     });
+
+    // Table Toolbar Event Listeners
+    const toggleFiltersBtn = document.getElementById('toggleColFiltersBtn');
+    if (toggleFiltersBtn) {
+        toggleFiltersBtn.addEventListener('click', () => {
+            SHOW_COL_FILTERS = !SHOW_COL_FILTERS;
+            toggleFiltersBtn.classList.toggle('active', SHOW_COL_FILTERS);
+            renderTable();
+        });
+    }
+
+    const clearSortBtn = document.getElementById('clearSortFilterBtn');
+    if (clearSortBtn) {
+        clearSortBtn.addEventListener('click', () => {
+            TABLE_SORT[ACTIVE_SUB] = { column: null, direction: 'asc' };
+            COLUMN_FILTERS[ACTIVE_SUB] = {};
+            PAGINATION[ACTIVE_SUB].page = 1;
+            renderTable();
+        });
+    }
+
+    const pageSizeSelect = document.getElementById('pageSizeSelect');
+    if (pageSizeSelect) {
+        pageSizeSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            PAGINATION[ACTIVE_SUB].pageSize = val === 'ALL' ? 'ALL' : parseInt(val, 10);
+            PAGINATION[ACTIVE_SUB].page = 1;
+            renderTable();
+        });
+    }
+
+    const prevPageBtn = document.getElementById('prevPageBtn');
+    if (prevPageBtn) {
+        prevPageBtn.addEventListener('click', () => {
+            if (PAGINATION[ACTIVE_SUB].page > 1) {
+                PAGINATION[ACTIVE_SUB].page--;
+                renderTable();
+            }
+        });
+    }
+
+    const nextPageBtn = document.getElementById('nextPageBtn');
+    if (nextPageBtn) {
+        nextPageBtn.addEventListener('click', () => {
+            PAGINATION[ACTIVE_SUB].page++;
+            renderTable();
+        });
+    }
 
     // Modal triggers
     const modal = document.getElementById('uploadModal');
@@ -579,6 +656,230 @@ function renderTable() {
     }
 }
 
+// --- Sorting, Column Filtering & Table Controls Helpers ---
+
+function getSortIconHtml(sub, col) {
+    const s = TABLE_SORT[sub];
+    if (!s || s.column !== col) {
+        return '<span class="sort-icon">↕</span>';
+    }
+    if (s.direction === 'asc') {
+        return '<span class="sort-icon active-asc">▲</span>';
+    }
+    return '<span class="sort-icon active-desc">▼</span>';
+}
+
+function getColLabel(col) {
+    const map = {
+        doc_no: 'Doc Number',
+        title: 'Deliverable Title',
+        discipline: 'Discipline',
+        status: 'Current Status',
+        milestone: 'Gate Milestone',
+        delay_type: 'Breach Classification',
+        delay_days: 'Days Delayed',
+        urgency: 'Severity',
+        days_remaining: 'Days Remaining',
+        slipping: 'Slippage'
+    };
+    return map[col] || col;
+}
+
+function handleHeaderSortClick(sub, col) {
+    const s = TABLE_SORT[sub];
+    if (s.column === col) {
+        if (s.direction === 'asc') {
+            s.direction = 'desc';
+        } else {
+            s.column = null;
+            s.direction = 'asc';
+        }
+    } else {
+        s.column = col;
+        s.direction = 'asc';
+    }
+    PAGINATION[sub].page = 1;
+    renderTable();
+}
+
+function updateTableToolbar(totalCount, sub) {
+    const p = PAGINATION[sub];
+    const s = TABLE_SORT[sub];
+    const filters = COLUMN_FILTERS[sub] || {};
+    
+    // Check if any filter or sort is active
+    let isFilteredOrSorted = Boolean(s && s.column);
+    for (let k in filters) {
+        if (filters[k] && filters[k] !== 'ALL') {
+            isFilteredOrSorted = true;
+            break;
+        }
+    }
+    
+    // Clear sort & filters button
+    const clearBtn = document.getElementById('clearSortFilterBtn');
+    if (clearBtn) {
+        clearBtn.style.display = isFilteredOrSorted ? 'inline-flex' : 'none';
+    }
+    
+    // Active sort badge
+    const sortBadge = document.getElementById('activeSortBadge');
+    if (sortBadge) {
+        if (s && s.column) {
+            const dirLabel = s.direction === 'asc' ? '▲ Asc' : '▼ Desc';
+            sortBadge.textContent = `Sort: ${getColLabel(s.column)} (${dirLabel})`;
+            sortBadge.style.display = 'inline-flex';
+        } else {
+            sortBadge.style.display = 'none';
+        }
+    }
+    
+    // Toggle button active state
+    const toggleBtn = document.getElementById('toggleColFiltersBtn');
+    if (toggleBtn) {
+        if (sub === 'delay') {
+            toggleBtn.style.display = 'none'; // Delay table has no column filter per user instruction
+        } else {
+            toggleBtn.style.display = 'inline-flex';
+            toggleBtn.classList.toggle('active', SHOW_COL_FILTERS);
+        }
+    }
+    
+    // Pagination & rows info
+    const pageSize = p.pageSize;
+    const totalPages = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(totalCount / pageSize));
+    p.page = Math.max(1, Math.min(p.page, totalPages));
+    
+    const startRow = totalCount === 0 ? 0 : (pageSize === 'ALL' ? 1 : (p.page - 1) * pageSize + 1);
+    const endRow = pageSize === 'ALL' ? totalCount : Math.min(p.page * pageSize, totalCount);
+    
+    const rowsInfo = document.getElementById('tableRowsInfo');
+    if (rowsInfo) {
+        rowsInfo.textContent = `Showing ${startRow.toLocaleString()}-${endRow.toLocaleString()} of ${totalCount.toLocaleString()}`;
+    }
+    
+    const pageIndicator = document.getElementById('pageIndicator');
+    if (pageIndicator) {
+        pageIndicator.textContent = `Page ${p.page} of ${totalPages}`;
+    }
+    
+    const prevBtn = document.getElementById('prevPageBtn');
+    if (prevBtn) {
+        prevBtn.disabled = (p.page <= 1);
+    }
+    
+    const nextBtn = document.getElementById('nextPageBtn');
+    if (nextBtn) {
+        nextBtn.disabled = (p.page >= totalPages);
+    }
+    
+    const pageSizeSelect = document.getElementById('pageSizeSelect');
+    if (pageSizeSelect) {
+        pageSizeSelect.value = String(p.pageSize);
+    }
+}
+
+function attachSortListeners(wrapper, sub) {
+    wrapper.querySelectorAll('.th-sortable').forEach(th => {
+        th.addEventListener('click', (e) => {
+            // Avoid triggering sort if click was inside an input or select
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            const col = th.getAttribute('data-col');
+            if (col) handleHeaderSortClick(sub, col);
+        });
+    });
+}
+
+function attachColFilterListeners(wrapper, sub) {
+    wrapper.querySelectorAll('.col-filter-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const col = e.target.getAttribute('data-col');
+            COLUMN_FILTERS[sub][col] = e.target.value.trim();
+            PAGINATION[sub].page = 1;
+            
+            const activeId = col;
+            const caretPos = e.target.selectionStart;
+            
+            renderTable();
+            
+            // Restore focus and caret position after re-render
+            const newEl = wrapper.querySelector(`.col-filter-input[data-col="${activeId}"]`);
+            if (newEl) {
+                newEl.focus();
+                try { newEl.setSelectionRange(caretPos, caretPos); } catch (err) {}
+            }
+        });
+    });
+
+    wrapper.querySelectorAll('.col-filter-select').forEach(select => {
+        select.addEventListener('change', (e) => {
+            const col = e.target.getAttribute('data-col');
+            COLUMN_FILTERS[sub][col] = e.target.value;
+            PAGINATION[sub].page = 1;
+            renderTable();
+        });
+    });
+}
+
+function sortDataList(list, sub) {
+    const s = TABLE_SORT[sub];
+    if (!s || !s.column) return list;
+    
+    const col = s.column;
+    const dir = s.direction === 'desc' ? -1 : 1;
+    
+    const statusOrder = {
+        'COMPLETE': 1,
+        'PENDING FINAL APPROVAL': 2,
+        'IFA Submitted': 3,
+        'IFR Submitted': 4,
+        'Not Yet Submitted': 5
+    };
+    
+    const urgencyOrder = {
+        'critical': 1,
+        'high': 2,
+        'medium': 3,
+        'low': 4
+    };
+    
+    return [...list].sort((a, b) => {
+        let valA = a[col];
+        let valB = b[col];
+        
+        if (col === 'status') {
+            const rankA = statusOrder[valA] || 99;
+            const rankB = statusOrder[valB] || 99;
+            return (rankA - rankB) * dir;
+        }
+        
+        if (col === 'urgency') {
+            const rankA = urgencyOrder[valA] || 99;
+            const rankB = urgencyOrder[valB] || 99;
+            return (rankA - rankB) * dir;
+        }
+        
+        if (col === 'delay_days' || col === 'days_remaining') {
+            const numA = Number(valA) || 0;
+            const numB = Number(valB) || 0;
+            return (numA - numB) * dir;
+        }
+        
+        if (col === 'slipping') {
+            const boolA = Boolean(valA) ? 1 : 0;
+            const boolB = Boolean(valB) ? 1 : 0;
+            return (boolB - boolA) * dir;
+        }
+        
+        // Alphanumeric comparison fallback
+        valA = String(valA || '').toLowerCase();
+        valB = String(valB || '').toLowerCase();
+        return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+}
+
+// --- Table Renderers ---
+
 function renderMdrTable(docs, wrapper, searchVal, discVal, statusVal, delayedList = [], milestoneVal = 'ALL', lookaheadList = []) {
     const matchingDelays = milestoneVal === 'ALL' ? delayedList : delayedList.filter(x => x.milestone.includes(milestoneVal));
     const delayedDocNos = new Set(matchingDelays.map(x => x.doc_no));
@@ -587,6 +888,7 @@ function renderMdrTable(docs, wrapper, searchVal, discVal, statusVal, delayedLis
     const critDocNos = new Set(matchingDelays.filter(x => x.urgency === 'critical').map(x => x.doc_no));
     const lookaheadDocNos = new Set((milestoneVal === 'ALL' ? lookaheadList : lookaheadList.filter(x => x.milestone.includes(milestoneVal))).map(x => x.doc_no));
 
+    // Global filtering
     let filtered = docs.filter(d => {
         if (discVal !== 'ALL' && d.discipline !== discVal) return false;
         if (searchVal && !(`${d.doc_no} ${d.title} ${d.discipline} ${d.status}`.toLowerCase().includes(searchVal))) return false;
@@ -618,19 +920,47 @@ function renderMdrTable(docs, wrapper, searchVal, discVal, statusVal, delayedLis
         return true;
     });
 
+    // Column-level filtering (Only on Doc Number, Deliverable Title, Discipline, Current Status)
+    const mdrFilters = COLUMN_FILTERS.mdr || {};
+    if (mdrFilters.doc_no) {
+        filtered = filtered.filter(d => (d.doc_no || '').toLowerCase().includes(mdrFilters.doc_no.toLowerCase()));
+    }
+    if (mdrFilters.title) {
+        filtered = filtered.filter(d => (d.title || '').toLowerCase().includes(mdrFilters.title.toLowerCase()));
+    }
+    if (mdrFilters.discipline && mdrFilters.discipline !== 'ALL') {
+        filtered = filtered.filter(d => d.discipline === mdrFilters.discipline);
+    }
+    if (mdrFilters.status && mdrFilters.status !== 'ALL') {
+        filtered = filtered.filter(d => d.status === mdrFilters.status);
+    }
+
+    // Apply Sorting
+    filtered = sortDataList(filtered, 'mdr');
+
+    // Update Toolbar & Pagination
+    updateTableToolbar(filtered.length, 'mdr');
+
     if (filtered.length === 0) {
         wrapper.innerHTML = '<div class="loading-spinner">No deliverables matching active filters found.</div>';
         return;
     }
 
+    // Pagination slice
+    const p = PAGINATION.mdr;
+    const displayDocs = p.pageSize === 'ALL' ? filtered : filtered.slice((p.page - 1) * p.pageSize, p.page * p.pageSize);
+
+    // Get unique disciplines for dropdown in filter row
+    const uniqueDisciplines = [...new Set(docs.map(d => d.discipline).filter(Boolean))].sort();
+
     let html = `
         <table>
             <thead>
                 <tr>
-                    <th>Doc Number</th>
-                    <th>Deliverable Title</th>
-                    <th>Discipline</th>
-                    <th>Current Status</th>
+                    <th class="th-sortable" data-col="doc_no" title="Click to sort by Doc Number">Doc Number ${getSortIconHtml('mdr', 'doc_no')}</th>
+                    <th class="th-sortable" data-col="title" title="Click to sort by Deliverable Title">Deliverable Title ${getSortIconHtml('mdr', 'title')}</th>
+                    <th class="th-sortable" data-col="discipline" title="Click to sort by Discipline">Discipline ${getSortIconHtml('mdr', 'discipline')}</th>
+                    <th class="th-sortable" data-col="status" title="Click to sort by Current Status">Current Status ${getSortIconHtml('mdr', 'status')}</th>
                     <th>IFR Plan</th>
                     <th>IFR Forecast</th>
                     <th>IFR Actual</th>
@@ -642,12 +972,40 @@ function renderMdrTable(docs, wrapper, searchVal, discVal, statusVal, delayedLis
                     <th>AFC App (20%)</th>
                     <th>AFC App Act (AP)</th>
                 </tr>
+    `;
+
+    // Inline Column Filter Row (only on Doc Number, Title, Discipline, Current Status)
+    if (SHOW_COL_FILTERS) {
+        let discOptions = `<option value="ALL">All Disciplines</option>`;
+        uniqueDisciplines.forEach(d => {
+            const sel = (mdrFilters.discipline === d) ? 'selected' : '';
+            discOptions += `<option value="${d}" ${sel}>${d}</option>`;
+        });
+
+        const statusList = ['ALL', 'COMPLETE', 'PENDING FINAL APPROVAL', 'IFA Submitted', 'IFR Submitted', 'Not Yet Submitted'];
+        let statusOptions = '';
+        statusList.forEach(s => {
+            const sel = (mdrFilters.status === s) ? 'selected' : '';
+            const label = s === 'ALL' ? 'All Statuses' : s;
+            statusOptions += `<option value="${s}" ${sel}>${label}</option>`;
+        });
+
+        html += `
+                <tr class="col-filter-row">
+                    <th><input type="text" class="col-filter-input" data-col="doc_no" placeholder="Filter doc..." value="${mdrFilters.doc_no || ''}"></th>
+                    <th><input type="text" class="col-filter-input" data-col="title" placeholder="Filter title..." value="${mdrFilters.title || ''}"></th>
+                    <th><select class="col-filter-select" data-col="discipline">${discOptions}</select></th>
+                    <th><select class="col-filter-select" data-col="status">${statusOptions}</select></th>
+                    <th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                </tr>
+        `;
+    }
+
+    html += `
             </thead>
             <tbody>
     `;
 
-    // Limit render to first 250 items for ultra smooth UI performance if too many
-    const displayDocs = filtered.slice(0, 250);
     displayDocs.forEach(d => {
         let badgeClass = 'badge-not-sub';
         let statusIcon = '';
@@ -691,18 +1049,23 @@ function renderMdrTable(docs, wrapper, searchVal, discVal, statusVal, delayedLis
     });
 
     html += `</tbody></table>`;
-    if (filtered.length > 250) {
-        html += `<div style="padding: 12px; text-align: center; color: var(--text-secondary); font-size: 13px;">Showing first 250 rows of ${filtered.length}. Use Search or Filter to refine.</div>`;
-    }
     wrapper.innerHTML = html;
+
+    // Attach event listeners
+    attachSortListeners(wrapper, 'mdr');
+    if (SHOW_COL_FILTERS) {
+        attachColFilterListeners(wrapper, 'mdr');
+    }
 }
 
 function renderDelayTable(delayedList, wrapper, searchVal, discVal, milestoneVal, statusVal) {
     if (statusVal === 'ON_TIME') {
         wrapper.innerHTML = '<div class="loading-spinner" style="color: var(--accent-emerald); font-weight: 600;">⚡ You selected the "On-Time / On-Schedule" filter. No delayed breaches exist for on-time items! Please switch to the "Master Document Register (MDR)" tab above to inspect your On-Time deliverables.</div>';
+        updateTableToolbar(0, 'delay');
         return;
     }
 
+    // Global filtering
     let filtered = delayedList.filter(d => {
         if (discVal !== 'ALL' && d.discipline !== discVal) return false;
         if (milestoneVal !== 'ALL' && !d.milestone.includes(milestoneVal)) return false;
@@ -713,22 +1076,32 @@ function renderDelayTable(delayedList, wrapper, searchVal, discVal, milestoneVal
         return true;
     });
 
+    // Apply Sorting (All headers except Baseline Plan onward)
+    filtered = sortDataList(filtered, 'delay');
+
+    // Update Toolbar & Pagination
+    updateTableToolbar(filtered.length, 'delay');
+
     if (filtered.length === 0) {
         wrapper.innerHTML = '<div class="loading-spinner" style="color: var(--accent-emerald);">✅ Great job! No overdue or delayed review gates match current criteria.</div>';
         return;
     }
 
+    // Pagination slice
+    const p = PAGINATION.delay;
+    const displayList = p.pageSize === 'ALL' ? filtered : filtered.slice((p.page - 1) * p.pageSize, p.page * p.pageSize);
+
     let html = `
         <table>
             <thead>
                 <tr>
-                    <th>Doc Number</th>
-                    <th>Deliverable Title</th>
-                    <th>Discipline</th>
-                    <th>Gate Milestone</th>
-                    <th>Breach Classification</th>
-                    <th>Days Delayed</th>
-                    <th>Urgent Severity</th>
+                    <th class="th-sortable" data-col="doc_no" title="Click to sort by Doc Number">Doc Number ${getSortIconHtml('delay', 'doc_no')}</th>
+                    <th class="th-sortable" data-col="title" title="Click to sort by Deliverable Title">Deliverable Title ${getSortIconHtml('delay', 'title')}</th>
+                    <th class="th-sortable" data-col="discipline" title="Click to sort by Discipline">Discipline ${getSortIconHtml('delay', 'discipline')}</th>
+                    <th class="th-sortable" data-col="milestone" title="Click to sort by Gate Milestone">Gate Milestone ${getSortIconHtml('delay', 'milestone')}</th>
+                    <th class="th-sortable" data-col="delay_type" title="Click to sort by Breach Classification">Breach Classification ${getSortIconHtml('delay', 'delay_type')}</th>
+                    <th class="th-sortable" data-col="delay_days" title="Click to sort by Days Delayed">Days Delayed ${getSortIconHtml('delay', 'delay_days')}</th>
+                    <th class="th-sortable" data-col="urgency" title="Click to sort by Urgent Severity">Urgent Severity ${getSortIconHtml('delay', 'urgency')}</th>
                     <th>Baseline Plan</th>
                     <th>Baseline Forecast</th>
                     <th>Actual Submission</th>
@@ -737,7 +1110,6 @@ function renderDelayTable(delayedList, wrapper, searchVal, discVal, milestoneVal
             <tbody>
     `;
 
-    const displayList = filtered.slice(0, 250);
     displayList.forEach(d => {
         const typeBadge = d.delay_type_code === '3.1' ? 'badge-type3_1' : 'badge-type3_2';
         const urgClass = `urgency-${d.urgency}`;
@@ -760,18 +1132,20 @@ function renderDelayTable(delayedList, wrapper, searchVal, discVal, milestoneVal
     });
 
     html += `</tbody></table>`;
-    if (filtered.length > 250) {
-        html += `<div style="padding: 12px; text-align: center; color: var(--text-secondary); font-size: 13px;">Showing top 250 delayed gates of ${filtered.length}.</div>`;
-    }
     wrapper.innerHTML = html;
+
+    // Attach sort listeners
+    attachSortListeners(wrapper, 'delay');
 }
 
 function renderLookaheadTable(lookaheadList, wrapper, searchVal, discVal, milestoneVal, statusVal) {
     if (statusVal === 'ON_TIME' || statusVal === 'DELAYED' || statusVal === 'TYPE3_1' || statusVal === 'TYPE3_2' || statusVal === 'CRITICAL') {
         wrapper.innerHTML = `<div class="loading-spinner" style="color: var(--accent-yellow); font-weight: 600;">⚡ You are currently on the 14-Day Lookahead tab, but selected a delay filter ("${statusVal}"). Please switch to the "Overdue & Delayed Table" tab above to view those delay items, or reset Breach Status to "All Statuses" / "14-Day Lookahead Warnings".</div>`;
+        updateTableToolbar(0, 'lookahead');
         return;
     }
 
+    // Global filtering
     let filtered = lookaheadList.filter(d => {
         if (discVal !== 'ALL' && d.discipline !== discVal) return false;
         if (milestoneVal !== 'ALL' && !d.milestone.includes(milestoneVal)) return false;
@@ -779,29 +1153,120 @@ function renderLookaheadTable(lookaheadList, wrapper, searchVal, discVal, milest
         return true;
     });
 
+    // Column-level filtering (All headers except Baseline Plan onward)
+    const lhFilters = COLUMN_FILTERS.lookahead || {};
+    if (lhFilters.doc_no) {
+        filtered = filtered.filter(d => (d.doc_no || '').toLowerCase().includes(lhFilters.doc_no.toLowerCase()));
+    }
+    if (lhFilters.title) {
+        filtered = filtered.filter(d => (d.title || '').toLowerCase().includes(lhFilters.title.toLowerCase()));
+    }
+    if (lhFilters.discipline && lhFilters.discipline !== 'ALL') {
+        filtered = filtered.filter(d => d.discipline === lhFilters.discipline);
+    }
+    if (lhFilters.milestone && lhFilters.milestone !== 'ALL') {
+        filtered = filtered.filter(d => d.milestone.includes(lhFilters.milestone));
+    }
+    if (lhFilters.days_remaining && lhFilters.days_remaining !== 'ALL') {
+        if (lhFilters.days_remaining === '7') {
+            filtered = filtered.filter(d => d.days_remaining <= 7);
+        } else if (lhFilters.days_remaining === '14') {
+            filtered = filtered.filter(d => d.days_remaining > 7);
+        }
+    }
+    if (lhFilters.slipping && lhFilters.slipping !== 'ALL') {
+        if (lhFilters.slipping === 'SLIPPING') {
+            filtered = filtered.filter(d => Boolean(d.slipping));
+        } else if (lhFilters.slipping === 'ON_SCHEDULE') {
+            filtered = filtered.filter(d => !d.slipping);
+        }
+    }
+
+    // Apply Sorting (All headers except Baseline Plan onward)
+    filtered = sortDataList(filtered, 'lookahead');
+
+    // Update Toolbar & Pagination
+    updateTableToolbar(filtered.length, 'lookahead');
+
     if (filtered.length === 0) {
         wrapper.innerHTML = '<div class="loading-spinner">No deliverables due within the upcoming 14 days lookahead window.</div>';
         return;
     }
 
+    // Pagination slice
+    const p = PAGINATION.lookahead;
+    const displayList = p.pageSize === 'ALL' ? filtered : filtered.slice((p.page - 1) * p.pageSize, p.page * p.pageSize);
+
+    // Get unique disciplines & milestones for lookahead filter row
+    const uniqueDisciplines = [...new Set(lookaheadList.map(d => d.discipline).filter(Boolean))].sort();
+    const uniqueMilestones = [...new Set(lookaheadList.map(d => d.milestone).filter(Boolean))].sort();
+
     let html = `
         <table>
             <thead>
                 <tr>
-                    <th>Doc Number</th>
-                    <th>Deliverable Title</th>
-                    <th>Discipline</th>
-                    <th>Upcoming Gate</th>
-                    <th>Days Remaining</th>
-                    <th>Slippage Warning</th>
+                    <th class="th-sortable" data-col="doc_no" title="Click to sort by Doc Number">Doc Number ${getSortIconHtml('lookahead', 'doc_no')}</th>
+                    <th class="th-sortable" data-col="title" title="Click to sort by Deliverable Title">Deliverable Title ${getSortIconHtml('lookahead', 'title')}</th>
+                    <th class="th-sortable" data-col="discipline" title="Click to sort by Discipline">Discipline ${getSortIconHtml('lookahead', 'discipline')}</th>
+                    <th class="th-sortable" data-col="milestone" title="Click to sort by Upcoming Gate">Upcoming Gate ${getSortIconHtml('lookahead', 'milestone')}</th>
+                    <th class="th-sortable" data-col="days_remaining" title="Click to sort by Days Remaining">Days Remaining ${getSortIconHtml('lookahead', 'days_remaining')}</th>
+                    <th class="th-sortable" data-col="slipping" title="Click to sort by Slippage Warning">Slippage Warning ${getSortIconHtml('lookahead', 'slipping')}</th>
                     <th>Baseline Plan</th>
                     <th>Forecast Due Date</th>
                 </tr>
+    `;
+
+    // Inline Column Filter Row (All headers except Baseline Plan onward)
+    if (SHOW_COL_FILTERS) {
+        let discOptions = `<option value="ALL">All Disciplines</option>`;
+        uniqueDisciplines.forEach(d => {
+            const sel = (lhFilters.discipline === d) ? 'selected' : '';
+            discOptions += `<option value="${d}" ${sel}>${d}</option>`;
+        });
+
+        let msOptions = `<option value="ALL">All Gates</option>`;
+        uniqueMilestones.forEach(m => {
+            const sel = (lhFilters.milestone === m) ? 'selected' : '';
+            msOptions += `<option value="${m}" ${sel}>${m}</option>`;
+        });
+
+        const daySel7 = (lhFilters.days_remaining === '7') ? 'selected' : '';
+        const daySel14 = (lhFilters.days_remaining === '14') ? 'selected' : '';
+
+        const slipSelSlip = (lhFilters.slipping === 'SLIPPING') ? 'selected' : '';
+        const slipSelOn = (lhFilters.slipping === 'ON_SCHEDULE') ? 'selected' : '';
+
+        html += `
+                <tr class="col-filter-row">
+                    <th><input type="text" class="col-filter-input" data-col="doc_no" placeholder="Filter doc..." value="${lhFilters.doc_no || ''}"></th>
+                    <th><input type="text" class="col-filter-input" data-col="title" placeholder="Filter title..." value="${lhFilters.title || ''}"></th>
+                    <th><select class="col-filter-select" data-col="discipline">${discOptions}</select></th>
+                    <th><select class="col-filter-select" data-col="milestone">${msOptions}</select></th>
+                    <th>
+                        <select class="col-filter-select" data-col="days_remaining">
+                            <option value="ALL">All Days</option>
+                            <option value="7" ${daySel7}>≤ 7 Days left</option>
+                            <option value="14" ${daySel14}>8 - 14 Days left</option>
+                        </select>
+                    </th>
+                    <th>
+                        <select class="col-filter-select" data-col="slipping">
+                            <option value="ALL">All Status</option>
+                            <option value="SLIPPING" ${slipSelSlip}>⚠️ Slipping</option>
+                            <option value="ON_SCHEDULE" ${slipSelOn}>⚡ On Schedule</option>
+                        </select>
+                    </th>
+                    <th></th><th></th>
+                </tr>
+        `;
+    }
+
+    html += `
             </thead>
             <tbody>
     `;
 
-    filtered.forEach(d => {
+    displayList.forEach(d => {
         const slipBadge = d.slipping 
             ? '<span class="badge-urgency urgency-critical">⚠️ SLIPPING FROM PLAN</span>' 
             : '<span class="badge-status badge-submitted">⚡ ON SCHEDULE</span>';
@@ -823,6 +1288,12 @@ function renderLookaheadTable(lookaheadList, wrapper, searchVal, discVal, milest
 
     html += `</tbody></table>`;
     wrapper.innerHTML = html;
+
+    // Attach event listeners
+    attachSortListeners(wrapper, 'lookahead');
+    if (SHOW_COL_FILTERS) {
+        attachColFilterListeners(wrapper, 'lookahead');
+    }
 }
 
 async function handleMultiUpload(files) {
